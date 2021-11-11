@@ -25,9 +25,3 @@ Once build-binary is created we can use it for the library:
 > ./build -deb
 > ./build -rel
 > ./build -install [target]
-
-# Releases #
-## Version 0.21 ##
-- Remove obsolete dynamic build directories from build.cpp
-
-

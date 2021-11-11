@@ -1,0 +1,8 @@
+debug
+release
+dox
+build
+makec4s
+cpp4scripts.sublime-workspace
+remote-build.sh
+t_*

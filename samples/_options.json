@@ -1,0 +1,27 @@
+{
+    "Application": {
+        "Name":"ajj",
+        "Database": null,
+        "DBPort": null,
+        "LogFile": "web.log",
+        "LogLevel": "TRACE",
+        "MaxRequests": 15,
+        "MaxBlogIndex": 128,
+        "DriverLog": true
+    },
+    "Smtp": {
+        "Server": "smtps://mail.menacon.fi",
+        "User": "info",
+        "Pwd": "[fill me]"
+    },
+    "Frame": {
+        "PageName": "index.bin",
+        "HandlerKey": "pg",
+        "Locales": "en",
+        "DirUpload": "upload/",
+        "SessionKeys": "/opt/www/random_base6.bin",
+        "SessionMaxAge": 1500,
+        "SessionDir": "sessions/",
+        "SessionTrace": true
+    }
+}

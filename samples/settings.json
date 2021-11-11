@@ -1,0 +1,18 @@
+{
+    "Section 1": {
+        "item1_str": "name of item 1",
+        "item2_int": 100,
+        "item3_bool": true,
+        "item4_float": 110.1,
+        "item5_null": null
+    },
+    "Section 2": {
+        "array": [ "arr value 1", "arr value 2", "arr value 3"],
+        "top": {
+            "sub1": "Hello",
+            "sub2": -2,
+            "sub3": [ 1.2, 2.3, 3.4 ]
+        },
+        "last int": 99
+    }
+}

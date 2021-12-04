@@ -19,6 +19,7 @@ const int PLF_NONE = 0;    //!< Add normal files only.
 const int PLF_DIRS = 0x1;  //!< Include directories.
 const int PLF_SYML = 0x2;  //!< Include symbolic links.
 const int PLF_NOREG = 0x4; //!< Discard regular files.
+const int PLF_NOSEARCHDIR = 0x8; //!< Don't include search target directory into results. 
 /**@}*/
 
 // -----------------------------------------------------------------------------------------------------------

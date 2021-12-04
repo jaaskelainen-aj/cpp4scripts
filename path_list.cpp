@@ -154,14 +154,29 @@ c4s::path_list::add(const path& target, const string& grep, int plf, const strin
             fname = target.get_dir();
             fname += de->d_name;
             if (!lstat(fname.c_str(), &file_stat)) {
-                if ((plf & PLF_NOREG) == 0 && S_ISREG(file_stat.st_mode))
-                    plist.push_back(path(target.get_dir(), string(de->d_name)));
-                else if ((plf & PLF_SYML) > 0 && S_ISLNK(file_stat.st_mode))
-                    plist.push_back(path(target.get_dir(), string(de->d_name)));
+                if ((plf & PLF_NOREG) == 0 && S_ISREG(file_stat.st_mode)) {
+                    if ((plf & PLF_NOSEARCHDIR) == 0)
+                        plist.push_back(path(target.get_dir(), string(de->d_name)));
+                    else
+                        plist.push_back(path(string(de->d_name)));
+                }
+                else if ((plf & PLF_SYML) > 0 && S_ISLNK(file_stat.st_mode)) {
+                    if ((plf & PLF_NOSEARCHDIR) == 0)
+                        plist.push_back(path(target.get_dir(), string(de->d_name)));
+                    else
+                        plist.push_back(path(string(de->d_name)));
+                }
                 else if ((plf & PLF_DIRS) > 0 && S_ISDIR(file_stat.st_mode) &&
-                         de->d_name[0] != '.') {
-                    string dirname = target.get_dir();
-                    dirname += de->d_name;
+                         de->d_name[0] != '.') 
+                {
+                    string dirname;
+                    if ((plf & PLF_NOSEARCHDIR) == 0) {
+                        dirname = target.get_dir();
+                        dirname += de->d_name;
+                    }
+                    else {
+                        dirname = de->d_name;    
+                    }
                     dirname += "/";
                     plist.push_back(path(dirname));
                 }

@@ -4,7 +4,8 @@
         "item2_int": 100,
         "item3_bool": true,
         "item4_float": 110.1,
-        "item5_null": null
+        "item5_null": null,
+        "item6_64bit": 12379813812177893530
     },
     "Section 2": {
         "array": [ "arr value 1", "arr value 2", "arr value 3"],

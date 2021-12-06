@@ -13,6 +13,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+#include <cstdint>
 
 namespace c4s {
 
@@ -41,7 +42,7 @@ class configuration
 
     std::string get_string(const std::string& section, const std::string& name);
     bool get_value(const std::string& section, const std::string& name, std::string& val);
-    bool get_value(const std::string& section, const std::string& name, long& val);
+    bool get_value(const std::string& section, const std::string& name, uint64_t& val);
     bool get_value(const std::string& section, const std::string& name, float& val);
     bool get_value(const std::string& section, const std::string& name, bool& val);
     bool is(const std::string& section, const std::string& name);
@@ -99,20 +100,20 @@ class str_item : public item
     std::string value;
 };
 // ...............................................
-class int_item : public item
+class integer_item : public item
 {
   public:
-    int_item(long val)
+    integer_item(uint64_t val)
       : item(TYPE::LONG)
       , value(val)
     {}
-    int_item(const int_item& original)
+    integer_item(const integer_item& original)
       : item(TYPE::LONG)
     {
         value = original.value;
     }
     void print(std::ostream& os) const { os << value; }
-    long value;
+    uint64_t value;
 };
 // ...............................................
 class float_item : public item

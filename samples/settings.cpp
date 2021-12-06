@@ -1,5 +1,8 @@
+/** Unit test / sample file for settings
+ *  Compilation: makec4s --dev -deb -s settings.cpp
+ */
 #include <iostream>
-#include "../c4s_all.hpp"
+#include "../cpp4scripts.hpp"
 
 using namespace std;
 using namespace c4s;
@@ -77,6 +80,15 @@ bool test2(const std::string& arg)
     try {
         configuration conf(configuration::FORMAT::JSON, json);
         print_settings(conf);
+
+        // Test the 64bit long
+        long l_int;
+        if (conf.get_value("Section 1", "item6_64bit", l_int))
+            cout << "json 64bit as hex=0xABCDEF123456789A. Value parsed from json=" << hex << l_int  << '\n';
+        else {
+            cout << "json 64bit not found.";
+            return false;
+        }
     }
     catch(const c4s_exception &ce) {
         cout<<"failed: "<<ce.what()<<'\n';

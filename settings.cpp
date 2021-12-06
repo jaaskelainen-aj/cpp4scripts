@@ -220,8 +220,7 @@ section::read_json(std::istream& input, json_parse_data& pd)
             if (ch == ',' || ch == '}' || ch == '\t' || ch == ' ' || ch == '\n' || ch == ']') {
                 try {
                     if (numtype == LONG) {
-                        if (value.size() > 9)
-                            items[pd.get_key()] = new int_item(stol(value));
+                        items[pd.get_key()] = new integer_item(stoul(value));
                     } else
                         items[pd.get_key()] = new float_item(stof(value));
                     if (ch == ']') {
@@ -301,7 +300,7 @@ section::read(configuration::FORMAT format, std::istream& input)
 
 }; // c4s::settings namespace
 
-// ==========================================================================================
+// =================================================================================================
 configuration::configuration()
 {
     // Intentionally empty
@@ -425,12 +424,12 @@ configuration::get_value(const std::string& section, const std::string& name, st
     return true;
 }
 bool
-configuration::get_value(const std::string& section, const std::string& name, long& val)
+configuration::get_value(const std::string& section, const std::string& name, uint64_t& val)
 {
     settings::item* si = find(section, name);
     if (!si || si->get_type() != settings::TYPE::LONG)
         return false;
-    val = static_cast<settings::int_item*>(si)->value;
+    val = static_cast<settings::integer_item*>(si)->value;
     return true;
 }
 bool

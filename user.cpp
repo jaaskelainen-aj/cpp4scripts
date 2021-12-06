@@ -358,7 +358,7 @@ c4s::user::create(bool append_groups)
 
     // Add group if it does not exist alread, and if name!=group.
     // In latter case we allow adduser-command to create group automatially.
-    ostringstream elog;
+    stringstream elog;
     elog << "user::create ";
     if (!group.empty() && gid == -1 &&
         (name.empty() || (name.empty() == false && name.compare(group)))) {
@@ -413,7 +413,8 @@ c4s::user::create(bool append_groups)
             useradd += "-m";
 
         useradd += name;
-        if (useradd(&elog)) {
+        useradd.pipe_to(&elog);
+        if (useradd()) {
             process::nzrv_exception = nzrv_restore;
             throw c4s_exception(elog.str());
         }
@@ -464,7 +465,8 @@ c4s::user::create(bool append_groups)
         usermod += home;
     }
     usermod += name;
-    if (usermod(&elog)) {
+    usermod.pipe_to(&elog);
+    if (usermod()) {
         process::nzrv_exception = nzrv_restore;
         elog << "Error - Unable to change primary group for user:" << name;
         throw c4s_exception(elog.str());

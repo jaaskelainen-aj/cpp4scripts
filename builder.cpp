@@ -32,7 +32,7 @@ namespace c4s {
     \param _log If specified, will receive compiler output.
     \param _flags Combination of build flags
 */
-builder::builder(path_list* _sources, const char* _name, ostream* _log)
+builder::builder(path_list* _sources, const char* _name, iostream* _log)
   : log(_log)
   , name(_name)
 {
@@ -52,7 +52,7 @@ builder::builder(path_list* _sources, const char* _name, ostream* _log)
     \param _log If specified, will receive compiler output.
     \param _flags Combination of build flags
 */
-builder::builder(const char* _name, ostream* _log)
+builder::builder(const char* _name, iostream* _log)
   : log(_log)
   , name(_name)
 {

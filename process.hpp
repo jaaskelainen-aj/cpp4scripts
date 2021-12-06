@@ -32,10 +32,9 @@ class proc_pipes
 #else
     void init(STARTUPINFO*, HANDLE*);
 #endif
-    void read_child_stdout(std::ostream*);
-    void read_child_stderr(std::ostream*);
-    size_t write_child_input(const path&);
-    void write_child_input(const std::string&);
+    void read_child_stdout(std::iostream*);
+    void read_child_stderr(std::iostream*);
+    size_t write_child_input(std::iostream*);
     void close_child_input();
     size_t get_br_out() { return br_out; }
     size_t get_br_err() { return br_err; }
@@ -53,7 +52,7 @@ class proc_pipes
     {
         winpipe(bool);
         ~winpipe();
-        void read(ostream*);
+        void read(iostream*);
         bool IsOK()
         {
             return (hpipe != INVALID_HANDLE_VALUE && hchild != INVALID_HANDLE_VALUE) ? true : false;
@@ -86,11 +85,11 @@ class process
     //! Creates a new process object from command and its arguments.
     process(const char*, const char* args);
     //! Creates a new proces, sets arguments and pipe target.
-    process(const char*, const char* args, std::ostream* out);
+    process(const char*, const char* args, std::iostream* out);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const char* args, std::ostream* out = 0);
+    process(const std::string&, const char* args, std::iostream* out = 0);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const std::string& args, std::ostream* out = 0);
+    process(const std::string&, const std::string& args, std::iostream* out = 0);
     //! Initializes the command only.
     process(const std::string&);
     //! Initializes the command only.
@@ -126,20 +125,12 @@ class process
     //! Adds the given string into argument list.
     void operator+=(const std::string& arg) { arguments << ' ' << arg; }
 
-    //! Given file is fed to child's stdin as the child is started.
-    void pipe_from(const path& from) { in_path = from; }
+    //! Forward content from given stream into process' stdin
+    void pipe_from(std::iostream* in) { pipe_source = in; }
     //! Pipes child stderr & stdout to given stream (file, stringstream or cout)
-    void pipe_to(std::ostream* out) { pipe_target = out; }
+    void pipe_to(std::iostream* out) { pipe_target = out; }
     //! Disables piping from child's stderr and stdout all together.
     void pipe_null() { pipe_target = 0; }
-    //! Enables default piping i.e. stdout
-    void pipe_default() { pipe_target = &std::cout; }
-    //! Sends the given string into childs stdin. Process must be running.
-    void pipe_send(const std::string& out)
-    {
-        if (pid && pipes)
-            pipes->write_child_input(out);
-    }
     //! Closes the send pipe to client.
     void pipe_send_close()
     {
@@ -147,7 +138,7 @@ class process
             pipes->close_child_input();
     }
     //! Sets a global file to catch output from all processes.
-    static void pipe_global_start(std::ofstream* po)
+    static void pipe_global_start(std::fstream* po)
     {
         if (po)
             pipe_global = po;
@@ -203,12 +194,6 @@ class process
     }
     //! Runs the process with optional timeout value (exec)
     int operator()(int timeout = C4S_PROC_TIMEOUT) { return exec(0, timeout); }
-    //! Runs the process and captures the output to given stream (exec)
-    int operator()(std::ostream* out, int to = C4S_PROC_TIMEOUT)
-    {
-        pipe_to(out);
-        return exec(0, to);
-    }
 
     //! Checks if the process is still running.
     bool is_running();
@@ -255,10 +240,11 @@ class process
     HANDLE wait_handles[3];
     DWORD last_ret_val;
 #endif
-    std::ostream* pipe_target; //!< Common pipe target.
-    path in_path;      //!< If defined and exists, files content will be used as input to process.
+    std::iostream* pipe_target; //!< Common pipe target i.e. process stdout
+    std::iostream* pipe_source; //!< Pipe source i.e. process stdin
+    path stdin_path;      //!< If defined and exists, files content will be used as input to process.
     proc_pipes* pipes; //!< Pipe to child for input and output. Valid when child is running.
-    static std::ofstream* pipe_global; //!< Global pipe target
+    static std::fstream* pipe_global; //!< Global pipe target
     bool echo; //!< If true then the commands are echoed to stdout before starting them. Use for
                //!< debugging.
 };

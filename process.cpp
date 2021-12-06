@@ -182,7 +182,7 @@ proc_pipes::winpipe::close()
 
 // -------------------------------------------------------------------------------------------------
 void
-proc_pipes::winpipe::read(ostream* pout)
+proc_pipes::winpipe::read(iostream* pout)
 {
     ostringstream oss;
     DWORD br, gle;
@@ -312,7 +312,7 @@ proc_pipes::init(STARTUPINFO* info, HANDLE* waits)
   \param pout Stream for the output
 */
 void
-proc_pipes::read_child_stdout(ostream* pout)
+proc_pipes::read_child_stdout(iostream* pout)
 {
 #if defined(__linux) || defined(__APPLE__)
     char out_buffer[512];
@@ -332,7 +332,7 @@ proc_pipes::read_child_stdout(ostream* pout)
   \param pout Stream for the output
 */
 void
-proc_pipes::read_child_stderr(ostream* pout)
+proc_pipes::read_child_stderr(iostream* pout)
 {
 #if defined(__linux) || defined(__APPLE__)
     char out_buffer[512];
@@ -374,31 +374,21 @@ size_t c4s::proc_pipes::read_child_stdin(ostream *pout)
   \param input String to write.
 */
 size_t
-proc_pipes::write_child_input(const path& pin)
+proc_pipes::write_child_input(std::iostream* input)
 {
     char buffer[1024];
-    size_t cnt = 0;
-#ifdef C4S_DEBUGTRACE
-    cerr << "proc_pipes::write_child_input - Feeding '" << pin.get_path() << "' to child input\n";
-#endif
+    size_t cnt = 0, ss;
 #if defined(__linux) || defined(__APPLE__)
-    streamsize ss;
-    ifstream input(pin.get_path().c_str());
-    if (!input) {
-        ostringstream os;
-        os << "proc_pipes::write_child_input - Unable to open input file:" << pin.get_path()
-           << " for the child stdin.";
-        throw process_exception(os.str());
-    }
+    if (!input)
+        return 0;
     do {
-        input.read(buffer, sizeof(buffer));
-        ss = input.gcount();
+        input->read(buffer, sizeof(buffer));
+        ss = input->gcount();
         if (ss > 0) {
             write(fd_in[1], buffer, ss);
             cnt += ss;
         }
-    } while (ss > 0 && input.good());
-    input.close();
+    } while (ss > 0 && input->good());
 #else
     HANDLE hin = CreateFile(pin.get_path().c_str(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
                             FILE_ATTRIBUTE_NORMAL, 0);
@@ -429,38 +419,11 @@ proc_pipes::write_child_input(const path& pin)
 }
 
 // -------------------------------------------------------------------------------------------------
-/*!
-  Writes the given string into the child input.
-  \param input String to write.
-*/
-void
-proc_pipes::write_child_input(const string& input)
-{
-#if defined(__linux) || defined(__APPLE__)
-    ssize_t bw;
-    bw = write(fd_in[1], input.c_str(), input.size());
-#else
-    DWORD bw;
-    WriteFile(in.hpipe, input.c_str(), (DWORD)input.size(), &bw, NULL);
-#endif
-#ifdef C4S_DEBUGTRACE
-    cerr << "proc_pipes::write_child_input - len:" << input.size() << '\n';
-    if ((size_t)bw < input.size()) {
-        if (errno)
-            cerr << "proc_pipes::write_child_input - " << strerror(errno);
-        cerr << "proc_pipes::write_child_input - failed. BW=" << bw << '\n';
-    }
-#endif
-    br_in += bw;
-    send_ctrlZ = true;
-}
-
-// -------------------------------------------------------------------------------------------------
 // ###############################  PROCESS ########################################################
 // -------------------------------------------------------------------------------------------------
 bool c4s::process::no_run = false;
 bool c4s::process::nzrv_exception = false; //!< If true 'Non-Zero Return Value' causes exception.
-ofstream* c4s::process::pipe_global = 0;
+fstream* c4s::process::pipe_global = 0;
 
 // -------------------------------------------------------------------------------------------------
 /*! Common initialize code for all constructors. Constructors call this function first.
@@ -471,6 +434,7 @@ process::init_member_vars()
     pid = 0;
     last_ret_val = 0;
     pipe_target = 0;
+    pipe_source = 0;
     pipes = 0;
     echo = false;
 #if defined(__linux) || defined(__APPLE__)
@@ -498,7 +462,7 @@ process::process(const char* cmd, const char* args)
   \param args Arguments to pass to the executable.
   \param out Pipe target. Process output is sent to this stream.
  */
-process::process(const char* cmd, const char* args, ostream* out)
+process::process(const char* cmd, const char* args, iostream* out)
 {
     init_member_vars();
     set_command(cmd);
@@ -511,7 +475,7 @@ process::process(const char* cmd, const char* args, ostream* out)
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
 */
-process::process(const string& cmd, const char* args, ostream* out)
+process::process(const string& cmd, const char* args, iostream* out)
 {
     init_member_vars();
     set_command(cmd.c_str());
@@ -525,7 +489,7 @@ process::process(const string& cmd, const char* args, ostream* out)
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
 */
-process::process(const string& cmd, const string& args, ostream* out)
+process::process(const string& cmd, const string& args, iostream* out)
 {
     init_member_vars();
     set_command(cmd.c_str());
@@ -714,8 +678,8 @@ process::start(const char* args)
         delete[] arg_ptr;
 
     // If child input file has been defined, feed it to child.
-    if (!in_path.empty()) {
-        size_t wb = pipes->write_child_input(in_path);
+    if (!stdin_path.empty()) {
+        size_t wb = pipes->write_child_input(stdin_path);
         if (echo)
             cerr << "process::start - " << command.get_base() << ". " << wb
                  << " bytes committed to child.\n";
@@ -870,8 +834,9 @@ process::start(const char* args)
     if (dynamic_buffer)
         delete[] dynamic_buffer;
     // If child input file has been defined, feed it to child.
-    if (!in_path.empty())
-        pipes->write_child_input(in_path);
+    if (pipe_source) {
+        pipes->write_child_input(pipe_source);
+    }
 }
 #endif // linux
 
@@ -948,7 +913,7 @@ process::wait_for_exit(int timeout)
         last_ret_val = 0;
         return 0;
     }
-    ostream* pipe = pipe_global ? pipe_global : pipe_target;
+    iostream* pipe = pipe_global ? pipe_global : pipe_target;
 #ifdef C4S_DEBUGTRACE
     cerr << "process::wait_for_exit - name=" << command.get_base() << ", pid=" << pid
          << ", timeout=" << timeout;
@@ -1276,7 +1241,7 @@ process::stop()
 void
 process::catch_output(const char* cmd, const char* args, string& output)
 {
-    ostringstream os;
+    stringstream os;
     process source(cmd, args);
     source.pipe_to(&os);
     int rv = source();
@@ -1299,7 +1264,7 @@ process::catch_output(const char* cmd, const char* args, string& output)
 void
 process::append_from(const char* cmd, const char* args, process& target)
 {
-    ostringstream os;
+    stringstream os;
     process source(cmd, args);
     source.pipe_to(&os);
     int rv = source();

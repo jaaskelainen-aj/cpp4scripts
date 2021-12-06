@@ -119,9 +119,9 @@ class builder : public BUILD
 
   protected:
     //! Protected constructor: Initialize builder with initial list of files to compile
-    builder(path_list* sources, const char* name, std::ostream* log);
+    builder(path_list* sources, const char* name, std::iostream* log);
     //! Protected constructor: File list is read from git.
-    builder(const char* name, std::ostream* log);
+    builder(const char* name, std::iostream* log);
     //! Executes compile step
     BUILD_STATUS compile(const char* out_ext, const char* out_arg, bool echo_name = true);
     //! Executes link/library step.
@@ -135,7 +135,7 @@ class builder : public BUILD
     c4s::process linker;       //!< Linker process for this builder.
     std::ostringstream c_opts; //!< List of options for the compiler.
     std::ostringstream l_opts; //!< List of options for the linker.
-    std::ostream* log;         //!< If not null, will receive compiler and linker output.
+    std::iostream* log;        //!< If not null, will receive compiler and linker output.
     c4s::path_list* sources;   //!< List of source files. Relative paths are possible.
     c4s::path_list extra_obj;  //!< Optional additional object files to be included at link step.
     std::string name;          //!< Simple target name.

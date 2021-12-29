@@ -10,6 +10,7 @@
 #define C4S_UTIL_HPP
 
 #include <string>
+#include <unordered_map>
 #include <stdint.h>
 
 namespace c4s {
@@ -86,6 +87,14 @@ uint64_t fnv_hash64_str(const char* str, size_t len, uint64_t salt);
 uint64_t fnv_hash64_file(const char* path, uint64_t salt);
 bool has_anybits(uint32_t target, uint32_t bits);
 bool has_allbits(uint32_t target, uint32_t bits);
+
+//! Two sided trim
+void trim(std::string&);
+
+//! Parse given string into map
+bool parse_key_values(const char* str, 
+                        std::unordered_map<std::string, std::string>& kv,
+                        char separator=',');
 
 typedef unsigned int flag32;
 

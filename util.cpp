@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <algorithm>
 #if defined(__linux) || defined(__APPLE__)
 #include <dirent.h>
 #include <grp.h>
@@ -636,6 +637,61 @@ has_allbits(uint32_t target, uint32_t bits)
 {
     uint32_t val = target & bits;
     return val == target ? true : false;
+}
+// -------------------------------------------------------------------------------------------------
+void
+trim(std::string& target)
+{
+    target.erase(target.begin(), std::find_if(target.begin(), target.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+    target.erase(std::find_if(target.rbegin(), target.rend(),
+            std::not1(std::ptr_fun<int, int>(std::isspace))).base(), target.end());
+}
+// -------------------------------------------------------------------------------------------------
+bool
+parse_key_values(const char* str, 
+    std::unordered_map<std::string, std::string>& kv,
+    char separator)
+{
+    enum STATE { KEY, VAL } state;
+    const char* ptr = str;
+    string key, val;
+    state = KEY;
+    while(*ptr) {
+        switch(state) {
+        case KEY:
+            if (*ptr == '=') {
+                state = VAL;
+            } else {
+                if(*ptr == ' ' && key.size() == 0)
+                    break;
+                key += *ptr;
+            }
+            break;
+        case VAL:
+            if (*ptr == separator) {
+                trim(key);
+                trim(val);
+                kv[key] = val;
+                key.clear();
+                val.clear();
+                state = KEY;
+            } else {
+                if(*ptr == ' ' && val.size() == 0)
+                    break;
+                val += *ptr;
+            }
+            break;    
+        }
+        ptr++;
+    }
+    if (state == KEY)
+        return false;
+    trim(key);
+    trim(val);
+    kv[key] = val;
+    return true;
 }
 
 } // namespace c4s

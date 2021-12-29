@@ -40,7 +40,9 @@ builder::builder(path_list* _sources, const char* _name, iostream* _log)
     my_sources = false;
     if (log) {
         compiler.pipe_to(log);
+        compiler.pipe_err(log);
         linker.pipe_to(log);
+        linker.pipe_err(log);
     }
     timeout = 30;
 }
@@ -58,7 +60,9 @@ builder::builder(const char* _name, iostream* _log)
 {
     if (log) {
         compiler.pipe_to(log);
+        compiler.pipe_err(log);
         linker.pipe_to(log);
+        linker.pipe_err(log);
     }
     timeout = 20;
     try {

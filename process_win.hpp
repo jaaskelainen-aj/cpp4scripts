@@ -14,8 +14,10 @@ namespace c4s {
 class compiled_file;
 class program_arguments;
 class variables;
+#if defined(__linux) || defined(__APPLE__)
 class user;
-// -------------------------------------------------------------------------------------------------
+#endif
+// -----------------------------------------------------------------------------------------------------------
 //! Process pipes wraps three pipes needed to communicate with child programs / binaries
 class proc_pipes
 {
@@ -24,10 +26,14 @@ class proc_pipes
     ~proc_pipes();
 
     void reset();
+#if defined(__linux) || defined(__APPLE__)
     void init_child();
     void init_parent();
-    bool read_child_stdout(std::iostream*);
-    bool read_child_stderr(std::iostream*);
+#else
+    void init(STARTUPINFO*, HANDLE*);
+#endif
+    void read_child_stdout(std::iostream*);
+    void read_child_stderr(std::iostream*);
     size_t write_child_input(std::iostream*);
     void close_child_input();
     size_t get_br_out() { return br_out; }
@@ -36,13 +42,35 @@ class proc_pipes
   protected:
     size_t br_out, br_err;
     bool send_ctrlZ;
+#if defined(__linux) || defined(__APPLE__)
     int fd_out[2];
     int fd_err[2];
     int fd_in[2];
     size_t br_in;
+#else
+    struct winpipe
+    {
+        winpipe(bool);
+        ~winpipe();
+        void read(iostream*);
+        bool IsOK()
+        {
+            return (hpipe != INVALID_HANDLE_VALUE && hchild != INVALID_HANDLE_VALUE) ? true : false;
+        }
+        void close();
+
+        OVERLAPPED overlapped;
+        HANDLE hpipe, hchild;
+        bool pending;
+        char buffer[512];
+        static int count;
+    };
+    winpipe out, err, in;
+    DWORD br_in;
+#endif
 };
 
-// -------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------
 //! Class encapsulates an executable process.
 /*! Class manages single executable process and its parameters. Process can be executed multiple
   times and its arguments can be changed in between. Process output (both stderr and stdout) is by
@@ -98,20 +126,27 @@ class process
     void operator+=(const std::string& arg) { arguments << ' ' << arg; }
 
     //! Forward content from given stream into process' stdin
-    void pipe_from(std::iostream* in) { stream_source = in; }
-    //! Pipes child stdout to given stream (file, stringstream or cout)
-    void pipe_to(std::iostream* out) { stream_out = out; }
-    //! Pipes child stderr to given stream (file, stringstream or cout)
-    void pipe_err(std::iostream* out) { stream_err = out; }
+    void pipe_from(std::iostream* in) { pipe_source = in; }
+    //! Pipes child stderr & stdout to given stream (file, stringstream or cout)
+    void pipe_to(std::iostream* out) { pipe_target = out; }
     //! Disables piping from child's stderr and stdout all together.
-    void pipe_null() { stream_out = 0; stream_err = 0; }
+    void pipe_null() { pipe_target = 0; }
     //! Closes the send pipe to client.
     void pipe_send_close()
     {
         if (pid && pipes)
             pipes->close_child_input();
     }
+    //! Sets a global file to catch output from all processes.
+    static void pipe_global_start(std::fstream* po)
+    {
+        if (po)
+            pipe_global = po;
+    }
+    //! Stops the global output catching
+    static void pipe_global_stop() { pipe_global = 0; }
 
+#if defined(__linux) || defined(__APPLE__)
     //! Sets the effective owner for the process. (Linux only)
     void set_user(user*);
     //! Sets the daemon flag. Use only for attached processes.
@@ -122,7 +157,10 @@ class process
     void attach(int pid);
     //! Attaches this object to running process with pid in named pid-file
     void attach(const path& pid_file);
-
+#else
+    //! Returns the pid for this process.
+    HANDLE get_pid() { return pid; }
+#endif
     //! Starts the executable process.
     /*! Process runs assynchronously. Command and possible arguments should have been given before
       this command. If process needs to be killed before it runs it's course, you may simply delete
@@ -171,12 +209,11 @@ class process
     //! Static function that appends parameters from one process to another.
     static void append_from(const char* cmd, const char* args, process& target);
     //! Static function to get current PID
+#if defined(__linux) || defined(__APPLE__)
     static pid_t get_running_pid() { return getpid(); }
+#endif
     //! Dumps the process name and arguments into given stream. Use for debugging.
     void dump(std::ostream&);
-
-    size_t get_bytes_out() { return bytes_out; }
-    size_t get_bytes_err() { return bytes_err; }
 
     static bool no_run; // 1< If true then the command is simply echoed to stdout but not actually
                         // run. i.e. dry run.
@@ -190,21 +227,27 @@ class process
     path command;                //!< Full path to a command that should be executed.
     std::stringstream arguments; //!< Stream of process arguments. Must not contain variables.
 
+#if defined(__linux) || defined(__APPLE__)
     int interpret_process_status(int);
     user* owner; //!< If defined, process will be executed with user's credentials.
     pid_t pid;
     int last_ret_val;
     bool daemon; //!< If true then the process is to be run as daemon and should not be terminated
                  //!< at class dest
-    std::iostream* stream_out; //!< Stream for process stdout
-    std::iostream* stream_err; //!< Stream for process stderr
-    std::iostream* stream_source; //!< Pipe source i.e. process stdin
+#else
+    HANDLE pid;
+    HANDLE output;
+    HANDLE wait_handles[3];
+    DWORD last_ret_val;
+#endif
+    std::iostream* pipe_target; //!< Common pipe target i.e. process stdout
+    std::iostream* pipe_source; //!< Pipe source i.e. process stdin
     path stdin_path;      //!< If defined and exists, files content will be used as input to process.
     proc_pipes* pipes; //!< Pipe to child for input and output. Valid when child is running.
+    static std::fstream* pipe_global; //!< Global pipe target
     bool echo; //!< If true then the commands are echoed to stdout before starting them. Use for
-               //!< debugging.    
-    size_t bytes_out, bytes_err;
+               //!< debugging.
 };
 
-} // namespace c4s
+}
 #endif

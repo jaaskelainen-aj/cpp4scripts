@@ -53,13 +53,13 @@ using namespace c4s;
 program_arguments args;
 
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
-                       "process.cpp program_arguments.cpp util.cpp variables.cpp "
+                       "program_arguments.cpp util.cpp variables.cpp "
                        "settings.cpp";
-const char* cpp_win = "builder_vc.cpp builder_ml.cpp";
-const char* cpp_linux = "user.cpp builder_gcc.cpp";
+const char* cpp_win = "process_win.cpp builder_vc.cpp builder_ml.cpp";
+const char* cpp_linux = "process.cpp user.cpp builder_gcc.cpp";
 // -------------------------------------------------------------------------------------------------
 int
-documentation(ostream* log)
+documentation(iostream* log)
 {
     cout << "Creating documentation\n";
     try {
@@ -78,7 +78,7 @@ documentation(ostream* log)
 // -------------------------------------------------------------------------------------------------
 #if defined(__linux) || defined(__APPLE__)
 int
-build(ostream* log)
+build(iostream* log)
 {
     builder *make = 0, *make2 = 0;
     bool debug = false;
@@ -198,7 +198,7 @@ build(ostream* log)
     if (log)
         *log << endl;
     path_list plmkc4s;
-    plmkc4s += path("makec4s.cpp");
+    plmkc4s += path("makec4s_win.cpp");
     builder* make2 = new builder_vc(&plmkc4s, "makec4s", log, BUILD(BUILD::BIN));
     make2->add_link("Advapi32.lib ");
     string c4slib(make->get_target_name());
@@ -403,7 +403,7 @@ main(int argc, char** argv)
         cout << "Function failed: " << ce.what() << '\n';
         return 1;
     }
-    ostream* log = &cout;
+    iostream* log = static_cast<basic_iostream<char>*>(&cout);
     if (args.is_set("-doc"))
         return documentation(log);
 

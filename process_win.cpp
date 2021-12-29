@@ -8,6 +8,7 @@
  */
 #include <iostream>
 #include <string.h>
+#if defined(__linux) || defined(__APPLE__)
 #include <fcntl.h>
 #include <grp.h>
 #include <signal.h>
@@ -16,7 +17,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-
+#endif
 #include "config.hpp"
 #include "exception.hpp"
 #include "user.hpp"
@@ -31,6 +32,10 @@
 using namespace std;
 using namespace c4s;
 
+#ifdef _WIN32
+const size_t MAX_ARG_BUFFER = 512;
+#endif
+
 namespace c4s {
 
 // -------------------------------------------------------------------------------------------------
@@ -38,7 +43,13 @@ namespace c4s {
   Initializes process pipes by creating three internal pipes.
 */
 proc_pipes::proc_pipes()
+#ifdef _WIN32
+  : out(true)
+  , err(true)
+  , in(false)
+#endif
 {
+#if defined(__linux) || defined(__APPLE__)
     int fd_tmp[2];
     memset(fd_out, 0, sizeof(fd_out));
     memset(fd_err, 0, sizeof(fd_err));
@@ -48,6 +59,9 @@ proc_pipes::proc_pipes()
         throw process_exception(
             "proc_pipes::proc_pipes - Unable to create pipe for the process std output.");
     if (fd_out[0] < 3 || fd_out[1] < 3) {
+        //#ifdef _DEBUG
+        //        cerr << "WARNING - Pipe allocation over standard streams !\n";
+        //#endif
         if (pipe(fd_tmp))
             throw process_exception(
                 "proc_pipes::proc_pipes - Unable to create pipe for the process std output (2).");
@@ -66,15 +80,22 @@ proc_pipes::proc_pipes()
     fcntl(fd_out[0], F_SETFL, fflag | O_NONBLOCK);
     fflag = fcntl(fd_err[0], F_GETFL, 0);
     fcntl(fd_err[0], F_SETFL, fflag | O_NONBLOCK);
+#else
+    // Error handling.
+    if (!out.IsOK() || !err.IsOK() || !in.IsOK())
+        throw process_exception("proc_pipes::proc_pipes - pipe creation error");
+#endif
     br_out = 0;
     br_err = 0;
     br_in = 0;
     send_ctrlZ = false;
 }
+
 // -------------------------------------------------------------------------------------------------
 void
 proc_pipes::close_child_input()
 {
+#if defined(__linux) || defined(__APPLE__)
     if (fd_in[0]) {
         close(fd_in[0]);
         fd_in[0] = 0;
@@ -83,13 +104,126 @@ proc_pipes::close_child_input()
         close(fd_in[1]);
         fd_in[1] = 0;
     }
+#else
+    if (send_ctrlZ) {
+        // cerr << "proc_pipes::close_child_input - Sending ctrl-Z\n";
+        char cZ = 0x1A;
+        DWORD bw;
+        WriteFile(in.hpipe, &cZ, 1, &bw, NULL);
+        send_ctrlZ = false;
+    }
+    in.close();
+#endif
 }
+
+// -------------------------------------------------------------------------------------------------
+#ifdef _WIN32
+int c4s::proc_pipes::winpipe::count = 0;
+proc_pipes::winpipe::winpipe(bool readFlag)
+{
+    pending = false;
+    memset(&overlapped, 0, sizeof(overlapped));
+    if (readFlag)
+        overlapped.hEvent = CreateEvent(NULL, TRUE, TRUE, NULL);
+
+    // Generate pipe
+    ostringstream oss;
+    oss << "\\\\.\\pipe\\cpp4scripts_" << GetCurrentProcessId() << "_" << count;
+    DWORD mode = readFlag ? PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED : PIPE_ACCESS_OUTBOUND;
+    hpipe = CreateNamedPipe(oss.str().c_str(), mode,
+                            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 255, 255, 500, 0);
+#ifdef _DEBUG
+    if (hpipe == INVALID_HANDLE_VALUE)
+        cerr << "DEBUG: proc_pipes::winpipe::winpipe - Create named pipe failed: "
+             << strerror(GetLastError()) << '\n';
+#endif
+
+    // Open client end
+    SECURITY_ATTRIBUTES sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    DWORD cmode = readFlag ? GENERIC_WRITE : GENERIC_READ;
+    hchild = CreateFile(oss.str().c_str(), cmode, 0, &sa, OPEN_EXISTING, 0, NULL);
+#ifdef _DEBUG
+    if (hchild == INVALID_HANDLE_VALUE)
+        cerr << "DEBUG: proc_pipes::winpipe::winpipe - Open child pipe failed: "
+             << strerror(GetLastError()) << '\n';
+#endif
+    count++;
+}
+
+// -------------------------------------------------------------------------------------------------
+proc_pipes::winpipe::~winpipe()
+{
+    if (hpipe)
+        close();
+}
+
+// -------------------------------------------------------------------------------------------------
+void
+proc_pipes::winpipe::close()
+{
+    if (pending)
+#if (_WIN32_WINNT >= 0x0600)
+        CancelIoEx(hpipe, &overlapped);
+#else
+        CancelIo(hpipe);
+#endif
+    if (overlapped.hEvent)
+        CloseHandle(overlapped.hEvent);
+    if (hpipe)
+        CloseHandle(hpipe);
+    if (hchild)
+        CloseHandle(hchild);
+    hchild = 0;
+    hpipe = 0;
+}
+
+// -------------------------------------------------------------------------------------------------
+void
+proc_pipes::winpipe::read(iostream* pout)
+{
+    ostringstream oss;
+    DWORD br, gle;
+    if (!hpipe)
+        return;
+    if (!pending) {
+        if (ReadFile(hpipe, buffer, sizeof(buffer), &br, &overlapped)) {
+            if (pout)
+                pout->write(buffer, br);
+            return;
+        }
+        gle = GetLastError();
+        if (gle == ERROR_IO_PENDING) {
+            pending = true;
+            return;
+        }
+        oss << "proc_pipes::winpipe::read - Read file (" << hpipe << ") failure:" << strerror(gle);
+        throw process_exception(oss.str());
+    }
+    if (GetOverlappedResult(hpipe, &overlapped, &br, FALSE)) {
+        if (pout)
+            pout->write(buffer, br);
+        pending = false;
+        return;
+    }
+    gle = GetLastError();
+    if (gle != ERROR_IO_INCOMPLETE) {
+        oss << "proc_pipes::winpipe::read - (" << hpipe
+            << ") GetOverlapped failure:" << strerror(gle);
+        throw process_exception(oss.str());
+    }
+}
+#endif // _WIN32
+
 // -------------------------------------------------------------------------------------------------
 /*!
   Closes the pipes created by the constructor.
 */
 proc_pipes::~proc_pipes()
 {
+#if defined(__linux) || defined(__APPLE__)
     if (fd_out[0])
         close(fd_out[0]);
     if (fd_out[1])
@@ -102,11 +236,15 @@ proc_pipes::~proc_pipes()
         close(fd_in[0]);
     if (fd_in[1])
         close(fd_in[1]);
+#endif
 }
+
 // -------------------------------------------------------------------------------------------------
+#if defined(__linux) || defined(__APPLE__)
 /*!
   Initilizes child side pipes. Call this from the child right after the fork and before exec.
   After this function you should destroy this object.
+  NOTE! This does nothing in Windows since the functionality is not needed
   \retval bool True on succes, false on error.
 */
 void
@@ -125,7 +263,10 @@ proc_pipes::init_child()
     memset(fd_err, 0, sizeof(fd_err));
     memset(fd_in, 0, sizeof(fd_in));
 }
+#endif
+
 // -------------------------------------------------------------------------------------------------
+#if defined(__linux) || defined(__APPLE__)
 /*!
   Initializes the parent side pipes. Call this from parent right after the fork.
   NOTE! This does nothing in Windows since the functionality is not needed
@@ -142,38 +283,91 @@ proc_pipes::init_parent()
     fd_out[1] = 0;
     fd_err[1] = 0;
 }
+#endif
+
+// -------------------------------------------------------------------------------------------------
+#ifdef _WIN32
+/*! Initialize startup function. (Windows only)
+   \param info Pointer to startup infro structure to be filled.
+   \param waits Pointer to array of three wait handles.
+*/
+void
+proc_pipes::init(STARTUPINFO* info, HANDLE* waits)
+{
+    memset(info, 0, sizeof(STARTUPINFO));
+    info->cb = sizeof(STARTUPINFO);
+    info->hStdOutput = out.hchild;
+    info->hStdError = err.hchild;
+    info->hStdInput = in.hchild;
+    info->dwFlags = STARTF_USESTDHANDLES;
+
+    waits[1] = out.overlapped.hEvent;
+    waits[2] = err.overlapped.hEvent;
+}
+#endif
+
 // -------------------------------------------------------------------------------------------------
 /*!
-  Read stdout from the child process and print it out on the given stream.
+  Read both stdout from the child process and print it out on the given stream.
   \param pout Stream for the output
 */
-bool
+void
 proc_pipes::read_child_stdout(iostream* pout)
 {
+#if defined(__linux) || defined(__APPLE__)
     char out_buffer[512];
     ssize_t rsize = read(fd_out[0], out_buffer, sizeof(out_buffer));
     if (rsize > 0 && pout) {
         pout->write(out_buffer, rsize);
     }
     br_out += rsize;
-    return rsize > 0 ? true : false;
+#else
+    out.read(pout);
+#endif
 }
+
 // -------------------------------------------------------------------------------------------------
 /*!
-  Read stderr from the child process and print it out on the given stream.
+  Read both stdout and stderr from the child process and print it out on the given stream.
   \param pout Stream for the output
 */
-bool
+void
 proc_pipes::read_child_stderr(iostream* pout)
 {
+#if defined(__linux) || defined(__APPLE__)
     char out_buffer[512];
     ssize_t rsize = read(fd_err[0], out_buffer, sizeof(out_buffer));
     if (rsize > 0 && pout) {
         pout->write(out_buffer, rsize);
     }
     br_err += rsize;
-    return rsize > 0 ? true : false;
+#else
+    err.read(pout);
+#endif
 }
+
+// -------------------------------------------------------------------------------------------------
+// Experimental!
+#if 0
+size_t c4s::proc_pipes::read_child_stdin(ostream *pout)
+{
+#if defined(__linux) || defined(__APPLE__)
+    char out_buffer[512];
+    size_t total=0;
+    ssize_t rsize=0;
+    if(!pout)
+        return 0;
+    do {
+        pout->write(out_buffer,rsize);
+        total += rsize;
+        rsize = read(fd_in[0],out_buffer,sizeof(out_buffer));
+        cerr << "rsize="<<rsize<<'\n';
+    }while(rsize>0);
+    return total;
+#endif
+}
+#endif
+
 // -------------------------------------------------------------------------------------------------
 /*!
   Writes the given string into the child input.
@@ -184,6 +378,7 @@ proc_pipes::write_child_input(std::iostream* input)
 {
     char buffer[1024];
     size_t cnt = 0, ss;
+#if defined(__linux) || defined(__APPLE__)
     if (!input)
         return 0;
     do {
@@ -194,6 +389,28 @@ proc_pipes::write_child_input(std::iostream* input)
             cnt += ss;
         }
     } while (ss > 0 && input->good());
+#else
+    HANDLE hin = CreateFile(pin.get_path().c_str(), GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL, 0);
+    if (hin == INVALID_HANDLE_VALUE) {
+        ostringstream os;
+        os << "proc_pipes::write_child_input - Unable to open input file:"
+           << strerror(GetLastError());
+        throw process_exception(os.str());
+    }
+    DWORD bw, ss;
+    do {
+        ReadFile(hin, buffer, sizeof(buffer), &ss, 0);
+        if (ss > 0) {
+            WriteFile(in.hpipe, buffer, ss, &bw, NULL);
+            cnt += ss;
+        }
+    } while (ss > 0);
+    CloseHandle(hin);
+    // Send Ctrl-Z = EOF.
+    buffer[0] = 0x1A;
+    WriteFile(in.hpipe, buffer, 1, &bw, NULL);
+#endif
 #ifdef C4S_DEBUGTRACE
     cerr << "proc_pipes::write_child_input - Wrote " << cnt << " bytes to child stdin\n";
 #endif
@@ -206,6 +423,7 @@ proc_pipes::write_child_input(std::iostream* input)
 // -------------------------------------------------------------------------------------------------
 bool c4s::process::no_run = false;
 bool c4s::process::nzrv_exception = false; //!< If true 'Non-Zero Return Value' causes exception.
+fstream* c4s::process::pipe_global = 0;
 
 // -------------------------------------------------------------------------------------------------
 /*! Common initialize code for all constructors. Constructors call this function first.
@@ -215,15 +433,16 @@ process::init_member_vars()
 {
     pid = 0;
     last_ret_val = 0;
-    stream_out = 0;
-    stream_err = 0;
-    stream_source = 0;
+    pipe_target = 0;
+    pipe_source = 0;
     pipes = 0;
     echo = false;
+#if defined(__linux) || defined(__APPLE__)
     owner = 0;
     daemon = false;
-    bytes_out = 0;
-    bytes_err = 0;
+#else
+    output = 0;
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -249,7 +468,7 @@ process::process(const char* cmd, const char* args, iostream* out)
     set_command(cmd);
     if (args)
         arguments << args;
-    stream_out = out;
+    pipe_target = out;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -263,7 +482,7 @@ process::process(const string& cmd, const char* args, iostream* out)
     if (args)
         arguments << args;
     if (out)
-        stream_out = out;
+        pipe_target = out;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -277,7 +496,7 @@ process::process(const string& cmd, const string& args, iostream* out)
     if (!args.empty())
         arguments << args;
     if (out)
-        stream_out = out;
+        pipe_target = out;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -296,6 +515,7 @@ process::process(const char* cmd)
     init_member_vars();
     set_command(cmd);
 }
+
 // -------------------------------------------------------------------------------------------------
 /*! If the the daemon mode has NOT been set then the destructor kills the process if it is still
  * running.
@@ -305,7 +525,11 @@ process::~process()
 #ifdef C4S_DEBUGTRACE
     cerr << "process::~process - name=" << command.get_base() << '\n';
 #endif
+#if defined(__linux) || defined(__APPLE__)
     if (pid && !daemon)
+#else
+    if (pid)
+#endif
         stop();
 
     if (pipes) {
@@ -313,6 +537,7 @@ process::~process()
         pipes = 0;
     }
 }
+
 // -------------------------------------------------------------------------------------------------
 /*!  Finds the command from current directory or path. If not found throws process
   exception. In windows .exe-is appended automatically if not specified in command.
@@ -324,6 +549,7 @@ process::set_command(const char* cmd)
     if (!cmd)
         throw process_exception("process::set_command - empty command");
     command = cmd;
+#if defined(__linux) || defined(__APPLE__)
     struct stat sbuf;
     memset(&sbuf, 0, sizeof(sbuf));
     // Check the user provided path first. This includes current directory.
@@ -338,9 +564,27 @@ process::set_command(const char* cmd)
             throw process_exception(ss.str());
         }
     }
+#else
+    char cmdpath[MAX_PATH];
+    char* fnamePtr;
+    if (!command.is_absolute()) {
+        if (command.get_ext().find(".exe") == string::npos)
+            command.set_ext(".exe");
+        // Search for the exe from pdsath.
+        if (!SearchPath(0, command.get_base().c_str(), 0, sizeof(cmdpath), cmdpath, &fnamePtr)) {
+            ostringstream ss;
+            // cerr << "DEBUG -- process::set_command - command:"<<command.get_base()<<" - not
+            // found!\n";
+            ss << " Command not found: " << cmd << "\n System error: " << strerror(GetLastError());
+            throw process_exception(ss.str());
+        } else
+            command = cmdpath;
+    }
+#endif
 }
+
 // -------------------------------------------------------------------------------------------------
-/*!  Copies the command name, arguments and stream_out. Other
+/*!  Copies the command name, arguments and pipe_target. Other
   attributes are simply cleared. Function should not be called if this process is running.
   \param source Source process to copy.
 */
@@ -351,22 +595,100 @@ process::operator=(const process& source)
     arguments.str("");
     arguments << source.arguments.str();
     pid = 0;
-    stream_out = source.stream_out;
+    pipe_target = source.pipe_target;
+#if defined(__linux) || defined(__APPLE__)
     daemon = source.daemon;
+#else
+    output = 0;
+#endif
 }
+
 // ### \TODO continue to improve documentation from here on down.
 // -------------------------------------------------------------------------------------------------
 void
 process::dump(ostream& os)
 {
     const char* pe = echo ? "true" : "false";
-    const char* pt = stream_out ? "OK" : "None";
+    const char* pt = pipe_target ? "OK" : "None";
     os << "Process - " << command.get_path() << "(";
     os << arguments.str();
-    os << ");\n   PID=" << pid << "; echo=" << pe << "; LRV=" << last_ret_val << "; stdout=" << pt
+    os << ");\n   PID=" << pid << "; echo=" << pe << "; LRV=" << last_ret_val << "; PT=" << pt
        << '\n';
 }
+
 // -------------------------------------------------------------------------------------------------
+#ifdef _WIN32
+void
+process::start(const char* args)
+{
+    STARTUPINFO info;
+    PROCESS_INFORMATION pi;
+    char *arg_ptr, arg_buffer[MAX_ARG_BUFFER];
+    bool args_reserved = false;
+
+    if (command.empty())
+        throw process_exception("process::start - Unable to start process. No command specified.");
+    if (pid)
+        stop();
+    streamsize max = command.get_path().size();
+    if (!args)
+        max += arguments.tellg();
+    else
+        max += strlen(args);
+    max += 3;
+    if (max >= MAX_ARG_BUFFER) {
+        arg_ptr = new char[(SIZE_T)max];
+        args_reserved = true;
+    } else
+        arg_ptr = arg_buffer;
+    strcpy(arg_ptr, command.get_path_quot().c_str());
+    strcat(arg_ptr, " ");
+    if (args)
+        strcat(arg_ptr, args);
+    else
+        strcat(arg_ptr, arguments.str().c_str());
+
+#ifdef C4S_DEBUGTRACE
+    const char* pstr = pipe_target ? "enabled" : "disabled";
+    cerr << "process::start - " << command.get_base() << "; pipe=" << pstr << "\n   final args:["
+         << arg_ptr << "]\n";
+#else
+    if (echo)
+        cerr << command.get_base() << '(' << arguments.str() << ")\n";
+#endif
+    if (no_run)
+        return;
+    if (pipes)
+        delete pipes;
+    pipes = new proc_pipes();
+    pipes->init(&info, wait_handles);
+
+    if (!CreateProcess(command.get_path().c_str(), arg_ptr, 0, 0, TRUE, CREATE_NO_WINDOW, 0, 0,
+                       &info, &pi)) {
+        ostringstream os;
+        os << " Unable to create process: " << command.get_base()
+           << " with command line: " << arguments.str();
+        if (args_reserved)
+            delete[] arg_ptr;
+        throw process_exception(os.str());
+    }
+    pid = pi.hProcess;
+    wait_handles[0] = pi.hProcess;
+    if (args_reserved)
+        delete[] arg_ptr;
+
+    // If child input file has been defined, feed it to child.
+    if (!stdin_path.empty()) {
+        size_t wb = pipes->write_child_input(stdin_path);
+        if (echo)
+            cerr << "process::start - " << command.get_base() << ". " << wb
+                 << " bytes committed to child.\n";
+    }
+}
+#endif
+
+// -------------------------------------------------------------------------------------------------
+#if defined(__linux) || defined(__APPLE__)
 void
 process::start(const char* args)
 {
@@ -459,10 +781,15 @@ process::start(const char* args)
     for (int i = 0; arg_ptr[i]; i++)
         cerr << " [" << i << "] " << arg_ptr[i] << '\n';
     cerr << "process::start - About to fork, pipe=";
-    if (stream_out)
+    if (pipe_target)
         cerr << "enabled";
     else
         cerr << "disabled";
+    cerr << ", pipe_global=";
+    if (pipe_global)
+        cerr << "enabled\n";
+    else
+        cerr << "disabled\n";
 #else
     if (echo) {
         cerr << command.get_base() << '(';
@@ -507,11 +834,14 @@ process::start(const char* args)
     if (dynamic_buffer)
         delete[] dynamic_buffer;
     // If child input file has been defined, feed it to child.
-    if (stream_source) {
-        pipes->write_child_input(stream_source);
+    if (pipe_source) {
+        pipes->write_child_input(pipe_source);
     }
 }
+#endif // linux
+
 // -------------------------------------------------------------------------------------------------
+#if defined(__linux) || defined(__APPLE__)
 void
 process::set_user(user* _owner)
 {
@@ -566,6 +896,9 @@ process::attach(const path& pid_file)
         throw process_exception(os.str());
     }
 }
+
+#endif // linux || Apple
+
 // -------------------------------------------------------------------------------------------------
 /*! If the timeout expires the process_exception is trown.
   \param timeout Number of seconds to wait.
@@ -580,16 +913,17 @@ process::wait_for_exit(int timeout)
         last_ret_val = 0;
         return 0;
     }
+    iostream* pipe = pipe_global ? pipe_global : pipe_target;
 #ifdef C4S_DEBUGTRACE
     cerr << "process::wait_for_exit - name=" << command.get_base() << ", pid=" << pid
          << ", timeout=" << timeout;
-    if (stream_out)
-        cerr << ", stream_out";
-    if (stream_err)
-        cerr << ', stream_err';
-    cerr << '\n';
+    if (!pipe)
+        cerr << ", quiet mode\n";
+    else
+        cerr << '\n';
     time_t beg = time(0);
 #endif
+#if defined(__linux) || defined(__APPLE__)
     int status;
     int counter = timeout * 10;
     struct timespec ts_delay, ts_remain;
@@ -598,10 +932,8 @@ process::wait_for_exit(int timeout)
     pid_t wait_val;
     do {
         nanosleep(&ts_delay, &ts_remain);
-        if (stream_err)
-            pipes->read_child_stderr(stream_err);
-        if (stream_out)
-            pipes->read_child_stdout(stream_out);
+        pipes->read_child_stderr(pipe);
+        pipes->read_child_stdout(pipe);
         wait_val = waitpid(pid, &status, WNOHANG);
         if (wait_val && wait_val != pid) {
             ostringstream os;
@@ -611,17 +943,14 @@ process::wait_for_exit(int timeout)
         }
         counter--;
     } while (!wait_val && counter > 0);
-    do { } while (stream_err && pipes->read_child_stderr(stream_err));
-    do { } while (stream_out && pipes->read_child_stdout(stream_out));
+    pipes->read_child_stderr(pipe);
+    pipes->read_child_stdout(pipe);
     last_ret_val = interpret_process_status(status);
 #ifdef C4S_DEBUGTRACE
     cerr << "process::wait_for_exit - name=" << command.get_base() << ", status:" << status
          << ", last_ret_val:" << last_ret_val;
     cerr << ", counter:" << counter << ", seconds:" << time(0) - beg;
     cerr << ", br_out:" << pipes->get_br_out() << ", br_err:" << pipes->get_br_err() << '\n';
-#else
-    bytes_err = pipes->get_br_err();
-    bytes_out = pipes->get_br_out();
 #endif
     if (counter <= 0) {
         ostringstream os;
@@ -629,7 +958,48 @@ process::wait_for_exit(int timeout)
            << "; Timeout!";
         throw process_timeout(os.str());
     }
+
+#else // Win32 ------------------------------
+    DWORD lapse, now, start = GetTickCount();
+    DWORD wfmo;
+    do {
+        wfmo = WaitForMultipleObjects(3, wait_handles, FALSE, 100);
+        now = GetTickCount();
+        lapse = now >= start ? now - start : (~0) - start + now;
+        if (wfmo >= WAIT_OBJECT_0 && wfmo <= WAIT_OBJECT_0 + 3) {
+            int ndx = wfmo - WAIT_OBJECT_0;
+            if (ndx == 0)
+                break; // = Process has stopped execution.
+            if (ndx == 1 && pipes)
+                pipes->read_child_stdout(pipe);
+            if (ndx == 2 && pipes)
+                pipes->read_child_stderr(pipe);
+        }
+    } while (wfmo <= WAIT_TIMEOUT && lapse < (DWORD)timeout * 1000);
+
+    if (wfmo > WAIT_TIMEOUT) {
+        ostringstream os;
+        os << "process::wait_for_exit - WaitForSingleObject error:" << strerror(GetLastError());
+        throw process_exception(os.str());
+    }
+    // Check for the timeout
+    if (lapse >= (DWORD)timeout * 1000) {
+        ostringstream os;
+        cerr << "process::wait_for_exit - name=" << command.get_base() << ", pid=" << (int)pid
+             << "; Process timeout!";
+        throw process_timeout(os.str());
+    }
+    // Get the exit code
+    if (!GetExitCodeProcess(pid, (LPDWORD)&last_ret_val)) {
+        ostringstream os;
+        os << "process::wait_for_exit - Unable to get process " << hex << pid << dec
+           << " exit code.";
+        throw process_exception(os.str());
+    }
+#endif
     pid = 0;
+    pipes->read_child_stdout(pipe);
+    pipes->read_child_stderr(pipe);
     stop();
     if (nzrv_exception && last_ret_val != 0) {
         ostringstream os;
@@ -697,8 +1067,16 @@ process::is_running()
 {
     if (!pid)
         return false;
+#if defined(__linux) || defined(__APPLE__)
     if (kill(pid, 0) == 0)
         return true;
+#else
+    DWORD rv;
+    GetExitCodeProcess(pid, &rv);
+    if (rv == STILL_ACTIVE)
+        return true;
+    last_ret_val = rv;
+#endif
     pid = 0;
     stop();
     return false;
@@ -708,6 +1086,7 @@ process::is_running()
 void
 process::stop_daemon()
 {
+#if defined(__linux) || defined(__APPLE__)
     ostringstream os;
 #ifdef C4S_DEBUGTRACE
     cerr << "process::stop_daemon - name=" << command.get_base() << '\n';
@@ -760,6 +1139,7 @@ process::stop_daemon()
     }
     pid = 0;
     last_ret_val = 0;
+#endif // __linux||__APPLE__
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -790,6 +1170,7 @@ process::stop()
             stop_daemon();
             return;
         }
+#if defined(__linux) || defined(__APPLE__)
         int status;
         ostringstream os;
     AGAIN:
@@ -828,6 +1209,19 @@ process::stop()
         } else {
             last_ret_val = interpret_process_status(status);
         }
+#else // __linux
+        if (!TerminateProcess(pid, 999)) {
+            if (pipes) {
+                delete pipes;
+                pipes = 0;
+            }
+            ostringstream oss;
+            oss << "Failed to terminate process:" << pid << ". Please terminate it manually. ";
+            oss << "Terminate error: " << strerror(GetLastError());
+            throw process_exception(oss.str());
+        }
+        CloseHandle(pid);
+#endif
         pid = 0;
     } // if(pid)
 

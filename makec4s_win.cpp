@@ -68,9 +68,15 @@ main(int argc, char** argv)
     args += argument("-rel", false, "Create release version (default).");
     args += argument("-def", false, "Print the default compiler argumens to stdout.");
     args += argument("-new", true, "Make a new c4s-template file with VALUE as the name.");
+#ifdef _WIN32
+    args += argument("-sr", false, "Makes VC to build against Microsoft static runtime (MT).");
+    args += argument("-c4s", true,
+                     "Path where Cpp4Scripts is installed. If not defined, then %C4S% is tried.");
+#else
     args += argument("-c4s", true,
                      "Path where Cpp4Scripts is installed. If not defined, then $C4S is tried and "
                      "then '/usr/local/'");
+#endif
     args += argument("-inc", true, "External include file to add to the build.");
     args += argument("-lib", true, "External library to add to the link command");
     args += argument("-m", true, "Set the VALUE as timeout (seconds) for the compile.");
@@ -113,6 +119,7 @@ main(int argc, char** argv)
     }
     if (args.is_set("-V"))
         verbose = true;
+#ifdef __APPLE__
     else {
         string verbose_env;
         if (get_env_var("MAKEC4S_VERBOSITY", verbose_env) && verbose_env[0] == '1')
@@ -126,10 +133,12 @@ main(int argc, char** argv)
                 cout << "Debugging mode selected via environment variable.\n";
         }
     } else
+#endif
         debug = args.is_set("-deb") ? true : false;
 
     if (args.is_set("-def")) {
         try {
+#if defined(__linux) || defined(__APPLE__)
             builder_gcc gcc("dummy", 0);
             gcc.set(BUILD::BIN);
             gcc.add(debug ? BUILD::DEB : BUILD::REL);
@@ -140,6 +149,16 @@ main(int argc, char** argv)
             link.set(BUILD::LIB);
             link.add(debug ? BUILD::DEB : BUILD::REL);
             link.print(cout);
+#else
+            builder_vc vc(0, "dummy", 0, flags);
+            cout << "Binary build default options:\n";
+            vc.print(cout);
+            cout << "Library build default options:\n";
+            flags.clear(BUILD::BIN);
+            flags.set(BUILD::LIB);
+            builder_vc link(0, "dummy", 0, flags);
+            link.print(cout);
+#endif
         } catch (const c4s_exception& ce) {
             cout << "Parameter output failed:" << ce.what() << '\n';
             return 1;
@@ -181,6 +200,30 @@ main(int argc, char** argv)
     target = src.get_base_plain();
     builder* make = 0;
     try {
+#ifdef _WIN32
+        // ............................................................
+        // Windows with Visual Studio. TODO: add parameter so that gcc could be used as well.
+        string c4svar, c4sinc;
+        string libname("c4s.lib");
+        make = new builder_vc(&sources, target.c_str(), &cout, flags);
+        if (args.is_set("-sr"))
+            ((builder_vc*)make)->setStaticRuntime();
+        if (args.is_set("-c4s"))
+            make->set_variable("C4S", args.get_value("-c4s"));
+        else if (!get_env_var("C4S", c4svar))
+            throw c4s_exception("C4S variable undefined. Library location unknown.");
+        make->add_comp("/I$(C4S)\\include\\cpp4scripts");
+        make->add_link("Advapi32.lib");
+        if (args.is_set("-t"))
+            make->add_comp("/DC4S_DEBUGTRACE");
+        make->add_link(libname.c_str());
+        if (debug)
+            make->add_link("/LIBPATH:$(C4S)\\lib-d");
+        else
+            make->add_link("/LIBPATH:$(C4S)\\lib");
+#endif
+#if defined(__linux) || defined(__APPLE__)
+        // ............................................................
         // Gcc options for Linux
         // Build options
         string libname("-lc4s");
@@ -208,6 +251,7 @@ main(int argc, char** argv)
             else
                 make->add_link("-L$(C4S)/lib");
         }
+#endif
         make->set(BUILD::BIN);
         make->set(debug ? BUILD::DEB : BUILD::REL);
         if (verbose)
@@ -230,5 +274,10 @@ main(int argc, char** argv)
             delete make;
         return 1;
     }
+#ifdef _WIN32
+    // Remove the annoying and undeeded object files
+    sources.set_ext(string(".obj"));
+    sources.rm_all();
+#endif
     return 0;
 }

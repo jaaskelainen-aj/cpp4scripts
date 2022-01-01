@@ -8,10 +8,10 @@ Copyright (c) Menacon Ltd
 *******************************************************************************/
 
 #include <string>
-using namespace std;
-#define C4S_DEBUGTRACE
-#include "../c4s_all.hpp"
+#include "../cpp4scripts.hpp"
+
 using namespace c4s;
+using namespace std;
 
 program_arguments args;
 typedef void (*tfptr)();
@@ -20,7 +20,7 @@ void test1()
 {
     // List all files in this directory using 'add-hock' process.
 #ifdef __linux
-    process("ls","-l",&cout)();
+    process("ls","-l",static_cast<iostream*>(&cout))();
 #else
     process("cmd","/C dir",&cout)();
 #endif
@@ -30,7 +30,7 @@ void test2()
 {
     ostringstream sout;
     cout << "Running sample client\n";
-    process("./client", "hello world",&sout)();
+    process("./client", "hello world",static_cast<iostream*>(&cout))();
     cout << "Client done. Output:>>\n"<<sout.str()<<'\n';
 }
 
@@ -45,7 +45,7 @@ void test3()
     cout << "Found user: "<<tu.get_name()<<" ("<<tu.get_uid()<<") / "<<tu.get_group()<<" ("<<tu.get_gid()<<")\n";
     process client("./client");
     client.set_user(&tu);
-    client.pipe_to(&cout);
+    client.pipe_to(static_cast<iostream*>(&cout));
     client();
     string param("/tmp/");
     param += tu.get_name();
@@ -70,11 +70,11 @@ void test4()
     // Arg 6 : [on]
     // Arg 7 : [fire]
     //               | samis\' \'  'world for peace' "one's heart".. 'dude\'s pants' on fire |
-    process("client"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ",&cout)();
+    process("client"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ",static_cast<iostream*>(&cout))();
     // Arg 0 : [-c]
     // Arg 1 : [\du admins]
     //               |-c "\du admins"|
-    process("client","-c \"\\du admins\"",&cout)();
+    process("client","-c \"\\du admins\"",static_cast<iostream*>(&cout))();
 }
 
 void test5()
@@ -82,14 +82,14 @@ void test5()
     path space("C:\\Program Files\\hellow.exe");
     string para(space.get_path_quot());
     para += " cheese";
-    process client("client",para.c_str(),&cout);
+    process client("client",para.c_str(),static_cast<iostream*>(&cout));
     client();
 }
 
 void test6()
 {
     const char *parts[]={"part-1", "part-2", "part-3", 0 };
-    process client("client","client call",&cout);
+    process client("client","client call",static_cast<iostream*>(&cout));
     for(const char **cur=parts; *cur; cur++) {
         cout << "------------------------------\n";
         client.execa(*cur);
@@ -99,7 +99,7 @@ void test6()
 void test7()
 {
 #ifdef __linux
-    ostringstream op;
+    stringstream op;
     user postgres("postgres","postgres",true, "/home/postgres/","/bin/bash","sys");
     int status = postgres.status();
     cout << "test 7 - user postgres status: "<<status<<'\n';
@@ -122,14 +122,16 @@ void test7()
 // ..........................................................................................
 void test8()
 {
-    ostringstream os;
+    stringstream os;
+    fstream input_txt;
     process cli("client",0,&os);
-    if(args.is_set("-f"))
-        cli.pipe_from(path("child.txt"));
+    if(args.is_set("-f")) {
+        input_txt.open("child.txt");
+        cli.pipe_from(&input_txt);
+    }
     cli.start();
     if(!args.is_set("-f")) {
-        cli.pipe_send("This is the\ntext to client:\nfamous hello world\nis always good.\n");
-        cli.pipe_send_close();
+        os << "This is the\ntext to client:\nfamous hello world\nis always good.\n";
     }
     cli.wait_for_exit(15);
     cout << "Received from client:"<<os.str()<<'\n';
@@ -143,7 +145,7 @@ void test9()
         cli.stop();
         cout<<"Stopped\n";
     }
-    catch(process_exception pe) {
+    catch(const process_exception& pe) {
         cout <<"Failed: "<<pe.what()<<endl;
     }
 }
@@ -151,7 +153,7 @@ void test9()
 void test10()
 {
     process echo;
-    echo.pipe_default();
+    echo.pipe_to(static_cast<iostream*>(&cout));
     echo = "./echo";
     echo += "hello";
     echo("world");
@@ -185,7 +187,7 @@ int main(int argc, char **argv)
 
     try{
         args.initialize(argc,argv,1);
-    }catch(c4s_exception re){
+    }catch(const c4s_exception &re){
         cerr << "Incorrect or missing parameter: " << re.what() << endl;
         cout << title <<'\n';
         args.usage();
@@ -204,7 +206,7 @@ int main(int argc, char **argv)
             tfunc[test-1]();
         else
             cout << "Unknown test number: "<<test<<'\n';
-    }catch(process_exception pe){
+    } catch(const process_exception& pe){
         cerr << "Process failure: "<<pe.what()<<endl;
         return 1;
     }

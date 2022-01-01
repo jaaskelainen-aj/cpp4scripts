@@ -150,12 +150,16 @@ proc_pipes::init_parent()
 bool
 proc_pipes::read_child_stdout(iostream* pout)
 {
-    char out_buffer[512];
-    ssize_t rsize = read(fd_out[0], out_buffer, sizeof(out_buffer));
+    static char out_buffer[MAX_PIPE_BUFFER];
+    ssize_t rsize = read(fd_out[0], out_buffer, MAX_PIPE_BUFFER);
     if (rsize > 0 && pout) {
         pout->write(out_buffer, rsize);
+        pout->flush();
+        br_out += rsize;
+#ifdef C4S_DEBUGTRACE
+        cerr << "proc_pipes::read_child_stdout - Wrote " << cnt << " bytes\n";
+#endif
     }
-    br_out += rsize;
     return rsize > 0 ? true : false;
 }
 // -------------------------------------------------------------------------------------------------
@@ -164,14 +168,18 @@ proc_pipes::read_child_stdout(iostream* pout)
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stderr(iostream* pout)
+proc_pipes::read_child_stderr(iostream* perr)
 {
-    char out_buffer[512];
-    ssize_t rsize = read(fd_err[0], out_buffer, sizeof(out_buffer));
-    if (rsize > 0 && pout) {
-        pout->write(out_buffer, rsize);
+    static char out_buffer[MAX_PIPE_BUFFER];
+    ssize_t rsize = read(fd_err[0], out_buffer, MAX_PIPE_BUFFER);
+    if (rsize > 0 && perr) {
+        perr->write(out_buffer, rsize);
+        perr->flush();
+        br_err += rsize;
+#ifdef C4S_DEBUGTRACE
+        cerr << "proc_pipes::read_child_stderr - Wrote " << cnt << " bytes\n";
+#endif
     }
-    br_err += rsize;
     return rsize > 0 ? true : false;
 }
 // -------------------------------------------------------------------------------------------------
@@ -588,8 +596,8 @@ process::wait_for_exit(int timeout)
     if (stream_err)
         cerr << ', stream_err';
     cerr << '\n';
-    time_t beg = time(0);
 #endif
+    time_t beg = time(0);
     int status;
     int counter = timeout * 10;
     struct timespec ts_delay, ts_remain;
@@ -611,8 +619,16 @@ process::wait_for_exit(int timeout)
         }
         counter--;
     } while (!wait_val && counter > 0);
-    do { } while (stream_err && pipes->read_child_stderr(stream_err));
-    do { } while (stream_out && pipes->read_child_stdout(stream_out));
+    if (counter) {
+        bool out_data = stream_out ? true : false;
+        bool err_data = stream_err ? true : false;
+        while (time(0) - beg < timeout && (out_data || err_data)) {
+            if (err_data)
+                err_data = pipes->read_child_stderr(stream_err);
+            if (out_data)
+                out_data = pipes->read_child_stdout(stream_out);
+        }
+    }
     last_ret_val = interpret_process_status(status);
 #ifdef C4S_DEBUGTRACE
     cerr << "process::wait_for_exit - name=" << command.get_base() << ", status:" << status

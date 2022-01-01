@@ -74,6 +74,7 @@ namespace c4s {
 // Library constants
 const SSIZE_T SSIZE_T_MAX = ~0;
 const int MAX_LINE = 512;
+const int MAX_PIPE_BUFFER = 2048;
 const int MAX_NESTING = 50;
 const unsigned long FNV_1_PRIME = 0x84222325cbf29ce4UL;
 const int MAX_PROCESS_ARGS = 100;

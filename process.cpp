@@ -249,15 +249,17 @@ process::process(const char* cmd, const char* args)
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
-  \param out Pipe target. Process output is sent to this stream.
+  \param out Process output is sent to this stream.
+  \param in Data from this stream is written to process stdin.
  */
-process::process(const char* cmd, const char* args, iostream* out)
+process::process(const char* cmd, const char* args, iostream* out, iostream* in)
 {
     init_member_vars();
     set_command(cmd);
     if (args)
         arguments << args;
     stream_out = out;
+    stream_source = in;
 }
 
 // -------------------------------------------------------------------------------------------------

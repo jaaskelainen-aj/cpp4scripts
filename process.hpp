@@ -57,7 +57,7 @@ class process
     //! Creates a new process object from command and its arguments.
     process(const char*, const char* args);
     //! Creates a new proces, sets arguments and pipe target.
-    process(const char*, const char* args, std::iostream* out);
+    process(const char*, const char* args, std::iostream* out, std::iostream* in=0);
     //! Creates a new process object from command and its arguments.
     process(const std::string&, const char* args, std::iostream* out = 0);
     //! Creates a new process object from command and its arguments.

@@ -184,15 +184,16 @@ stderr_sink::print(LOG_LEVEL ll, const char* str)
 }
 // -------------------------------------------------------------------------------------------------
 c4s::LOG_LEVEL
-c4s::logbase::str2level(const char* name)
+c4s::logbase::str2level(const string& name)
 {
     const int MAX = 8;
     LOG_LEVEL level_value[MAX] = { LL_NONE,   LL_TRACE,   LL_DEBUG, LL_INFO,
                                    LL_NOTICE, LL_WARNING, LL_ERROR, LL_CRITICAL };
+    const char* nptr = name.c_str();
     for (int ndx = 0; ndx < MAX; ndx++) {
-        if (!_stricmp(name, g_level_names[ndx]))
+        if (!_stricmp(nptr, g_level_names[ndx]))
             return level_value[ndx];
-    }
+    }    
     ostringstream err;
     err << "logbase::str2level - Unknown log level string:" << name;
     throw c4s_exception(err.str());

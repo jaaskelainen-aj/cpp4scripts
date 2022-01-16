@@ -45,18 +45,6 @@ c4s::path::path()
 }
 
 // -------------------------------------------------------------------------------------------------
-c4s::path::path(const path& p)
-{
-    dir = p.dir;
-    base = p.base;
-    change_time = p.change_time;
-    flag = p.flag;
-#if defined(__linux) || defined(__APPLE__)
-    owner = p.owner;
-    mode = p.mode;
-#endif
-}
-// -------------------------------------------------------------------------------------------------
 c4s::path::path(const path& _dir, const char* _base)
 {
     init_common();
@@ -138,6 +126,19 @@ c4s::path::path(const string& p, user* o, int m)
     mode = m;
 }
 #endif
+// -------------------------------------------------------------------------------------------------
+void c4s::path::operator=(const path& p)
+{
+    dir = p.dir;
+    base = p.base;
+    change_time = p.change_time;
+    flag = p.flag;
+#if defined(__linux) || defined(__APPLE__)
+    owner = p.owner;
+    mode = p.mode;
+#endif
+}
+
 // -------------------------------------------------------------------------------------------------
 /** If the string ends with directory separator string is copied into dir and base is left
   empty. If the string does not have any directory separators string is copied to base and dir is

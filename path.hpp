@@ -64,7 +64,7 @@ class path
     //! Default constructor that initializes empty path.
     path();
     //! Copy constructor.
-    path(const path& p);
+    path(const path& p) { *this = p; }
     //! Constructs path from dir part and given base.
     path(const path& dir, const char* base);
     //! Constructs path from single string.
@@ -86,12 +86,7 @@ class path
 #endif
 
     //! Sets path so that it equals another path.
-    void operator=(const path& p)
-    {
-        dir = p.dir;
-        base = p.base;
-        change_time = p.change_time;
-    }
+    void operator=(const path& p);
     //! Sets the path from pointer to const char.
     void operator=(const char* p) { set(std::string(p)); }
     //! Sets the path from constant string.

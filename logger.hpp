@@ -168,7 +168,7 @@ class logbase
     //! Changes the current logging level.
     void set_level(LOG_LEVEL ll) { level = ll; }
     //! Utility function to convert text levels into numerical levels
-    static LOG_LEVEL str2level(const char* name);
+    static LOG_LEVEL str2level(const std::string& name);
 
   protected:
     static logbase* thelog;

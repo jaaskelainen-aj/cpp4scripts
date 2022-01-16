@@ -188,13 +188,14 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
     list<path>::iterator src;
     ostringstream options;
     bool exec = false;
+    bool logging = log && has_any(BUILD::VERBOSE);
 
     if (!sources)
         throw c4s_exception("builder::compile - sources not defined!");
 
     string prepared(vars.expand(c_opts.str()));
     try {
-        if (log && has_any(BUILD::VERBOSE))
+        if (logging)
             *log << "Considering " << sources->size() << " source files for build.\n";
         for (src = sources->begin(); src != sources->end(); src++) {
             current_obj.set(build_dir + C4S_DSEP, src->get_base_plain(), out_ext);
@@ -219,7 +220,12 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
             compiler.wait_for_exit(timeout);
         }
         if (!exec) {
-            if (log && has_any(BUILD::VERBOSE))
+            if (has_any(BUILD::FORCELINK)) {
+                if (logging)
+                    *log << "No outdated source files found but forcing link step.\n";
+                return BUILD_STATUS::OK;
+            }
+            if (logging)
                 *log << "No outdated source files found.\n";
             return BUILD_STATUS::NOTHING_TO_DO;
         }

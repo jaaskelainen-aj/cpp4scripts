@@ -15,22 +15,21 @@ namespace c4s {
 class BUILD : public flags32_base
 {
   public:
-    static const flag32 NONE = 0x000;   //!< No flags.
-    static const flag32 DEB = 0x001;    //!< Builds a debug version
-    static const flag32 REL = 0x002;    //!< Builds a release version
-    static const flag32 EXPORT = 0x004; //!< Build prepares options for export and skips build step.
-    static const flag32 BIN = 0x010;    //!< Builds a normal binary.
-    static const flag32 SO = 0x020;     //!< Builds a dynamic library (DLL or SO)
-    static const flag32 LIB = 0x040;    //!< Builds a library
+    static const flag32 NONE = 0x000;    //!< No flags.
+    static const flag32 DEB = 0x001;     //!< Builds a debug version
+    static const flag32 REL = 0x002;     //!< Builds a release version
+    static const flag32 EXPORT = 0x004;  //!< Build prepares options for export and skips build step.
+    static const flag32 BIN = 0x010;     //!< Builds a normal binary.
+    static const flag32 SO = 0x020;      //!< Builds a dynamic library (DLL or SO)
+    static const flag32 LIB = 0x040;     //!< Builds a library
     static const flag32 VERBOSE = 0x080; //!< Verbose build, shows more output
-    static const flag32 RESPFILE =
-        0x100; //!< Puts arguments into response file before compiling or linking.
-    static const flag32 WIDECH = 0x400; //!< Uses wide characters i.e. wchar_t
-    static const flag32 NOLINK = 0x800; //!< Only compilation is done at build-command.
-    static const flag32 NODEFARGS =
-        0x1000; //!< Skip use of default arguments. All build arguments must be specifically added.
+    static const flag32 RESPFILE = 0x100;//!< Puts arguments into response file before compiling or linking.
+    static const flag32 WIDECH = 0x400;  //!< Uses wide characters i.e. wchar_t
+    static const flag32 NOLINK = 0x800;  //!< Only compilation is done at build-command.
+    static const flag32 NODEFARGS = 0x1000;  //!< Skip use of default arguments. All build arguments must be specifically added.
     static const flag32 PLAIN_C = 0x2000;    //!< Use C-compilation instead of the default C++.
     static const flag32 NOINCLUDES = 0x4000; //!< Don't check includes for oudated status
+    static const flag32 FORCELINK = 0x8000;  //!< Do link step even if no outdated files found.
 
     BUILD()
       : flags32_base(NONE)

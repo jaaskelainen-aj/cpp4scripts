@@ -24,7 +24,6 @@
  */
 
 #include <list>
-#include <iostream>
 #include <sstream>
 
 #include "builder.cpp"
@@ -55,7 +54,9 @@ program_arguments args;
 
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "program_arguments.cpp util.cpp variables.cpp "
-                       "settings.cpp process.cpp user.cpp builder_gcc.cpp";
+                       "settings.cpp";
+const char* cpp_win = "process_win.cpp builder_vc.cpp builder_ml.cpp";
+const char* cpp_linux = "process.cpp user.cpp builder_gcc.cpp";
 // -------------------------------------------------------------------------------------------------
 int
 documentation(iostream* log)
@@ -75,6 +76,7 @@ documentation(iostream* log)
 }
 
 // -------------------------------------------------------------------------------------------------
+#if defined(__linux) || defined(__APPLE__)
 int
 build(iostream* log)
 {
@@ -85,6 +87,7 @@ build(iostream* log)
         cout << "Warning: Unable to update build number.\n";
 
     path_list cppFiles(cpp_list, ' ');
+    cppFiles.add(cpp_linux, ' ');
 
     make = new builder_gcc(&cppFiles, "c4s", log);
     make->set(BUILD::LIB);
@@ -158,6 +161,63 @@ build(iostream* log)
     delete make2;
     return rv;
 }
+#endif
+// -------------------------------------------------------------------------------------------------
+#ifdef _WIN32
+int
+build(ostream* log)
+{
+    std::ostringstream liblog;
+    int rv = 0;
+
+    cout << "Building library\n";
+    if (args.is_set("-u") && builder::update_build_no("version.hpp"))
+        cout << "Warning: Unable to update build number\n";
+
+    path_list cppFiles(cpp_list, ' ');
+    cppFiles.add(cpp_win, ' ');
+
+    string target = "c4s";
+    if (args.is_set("-l")) {
+        target += '-';
+        target += args.get_value("-l");
+    }
+    builder* make = new builder_vc(&cppFiles, target.c_str(), log, BUILD(BUILD::LIB));
+    make->add_comp("/DLIB_BUILD /D_CRT_SECURE_NO_WARNINGS");
+    if (args.is_set("-xp"))
+        make->add_comp("/D_WIN32_WINNT=0x0501");
+    *make |= args.is_set("-deb") ? BUILD::DEB : BUILD::REL;
+    if (args.is_set("-V"))
+        *make |= BUILD::VERBOSE;
+    if (make->build()) {
+        cout << "Build failed\n";
+        return 2;
+    }
+
+    cout << "Building makec4s\n";
+    if (log)
+        *log << endl;
+    path_list plmkc4s;
+    plmkc4s += path("makec4s_win.cpp");
+    builder* make2 = new builder_vc(&plmkc4s, "makec4s", log, BUILD(BUILD::BIN));
+    make2->add_link("Advapi32.lib ");
+    string c4slib(make->get_target_name());
+    c4slib += " /LIBPATH:";
+    c4slib += make->get_build_dir();
+    make2->add_link(c4slib.c_str());
+    *make2 |= args.is_set("-deb") ? BUILD::DEB : BUILD::REL;
+    if (args.is_set("-V"))
+        *make2 |= BUILD::VERBOSE;
+    if (make2->build()) {
+        cout << "Build failed\n";
+        return 2;
+    }
+
+    cout << "Build finished.\n";
+    return 0;
+}
+#endif
+
 // -------------------------------------------------------------------------------------------------
 int
 clean()
@@ -178,6 +238,7 @@ clean()
     cout << "Build directories and " << tmp.size() << " temp-files removed\n";
     return 0;
 }
+
 // -------------------------------------------------------------------------------------------------
 int
 install()
@@ -211,10 +272,17 @@ install()
         target += args.get_value("-l");
     }
 
+#if defined(__linux) || defined(__APPLE__)
+    sources.add(cpp_linux, ' ');
     path dlib("debug/libc4s.a");
     path rlib("release/libc4s.a");
     path make_name("makec4s");
-
+#else
+    sources.add(cpp_win, ' ');
+    path dlib(builder_vc(0, target.c_str(), 0, BUILD::LIB | BUILD::DEB).get_target_path());
+    path rlib(builder_vc(0, target.c_str(), 0, BUILD::LIB | BUILD::REL).get_target_path());
+    path make_name(builder_vc(0, "makec4s", 0, BUILD::BIN | BUILD::REL).get_target_name());
+#endif
     int lib_count = 0;
     if (dlib.exists()) {
         path lib(inst_root);
@@ -255,10 +323,17 @@ install()
     // Copy makec4s utility
     if (args.is_set("-V"))
         cout << "Copying makec4s\n";
+#if defined(__linux) || defined(__APPLE__)
     if (inst_root.get_dir().find("local") != string::npos)
         lbin.set("/usr/local/bin/");
     else
         lbin.set("/usr/bin/");
+#else
+    lbin = inst_root;
+    lbin += "bin/";
+    if (!lbin.dirname_exists())
+        lbin.mkdir();
+#endif
     if (make_name.exists()) {
         make_name.cp(lbin, PCF_FORCE);
         if (args.is_set("-V"))
@@ -282,6 +357,9 @@ main(int argc, char** argv)
     args += argument("-t", false,
                      "Add TRACE define into target build that enables lots of debug output.");
     args += argument("-u", false, "Updates the build number (last part of version number).");
+#ifdef _WIN32
+    args += argument("-wda", false, "Wait for debugger to attach, i.e. wait for a keypress.");
+#endif
     args += argument("-CXX", false, "Reads the compiler name from CXX environment variable.");
     args += argument("-doc", false, "Create docbook documentation only.");
     args += argument("-clean", false, "Clean up temporary files.");
@@ -306,6 +384,12 @@ main(int argc, char** argv)
     }
     if (args.is_set("-v"))
         return 0;
+#ifdef _WIN32
+    if (args.is_set("-wda")) {
+        char ch;
+        cin >> ch;
+    }
+#endif
     if (args.is_set("-?")) {
         args.usage();
         return 0;

@@ -58,7 +58,7 @@ const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "settings.cpp process.cpp user.cpp builder_gcc.cpp";
 // -------------------------------------------------------------------------------------------------
 int
-documentation(iostream* log)
+documentation(ostream* log)
 {
     cout << "Creating documentation\n";
     try {
@@ -76,7 +76,7 @@ documentation(iostream* log)
 
 // -------------------------------------------------------------------------------------------------
 int
-build(iostream* log)
+build(ostream* log)
 {
     builder *make = 0, *make2 = 0;
     bool debug = false;
@@ -319,7 +319,7 @@ main(int argc, char** argv)
         cout << "Function failed: " << ce.what() << '\n';
         return 1;
     }
-    iostream* log = static_cast<iostream*>(&cout);
+    ostream* log = &cout;
     if (args.is_set("-doc"))
         return documentation(log);
 

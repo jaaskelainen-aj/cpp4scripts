@@ -184,7 +184,7 @@ main(int argc, char** argv)
         // Gcc options for Linux
         // Build options
         string libname("-lc4s");
-        make = new builder_gcc(&sources, target.c_str(), static_cast<std::basic_iostream<char>*>(&cout));
+        make = new builder_gcc(&sources, target.c_str(), &cout);
         // Get C4S location
         string c4svar;
         make->add_comp("-x c++ -fno-rtti");

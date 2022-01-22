@@ -7,6 +7,7 @@
         { "name": "R build", "shell_cmd": "$project_path/remote-build.sh", "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)" }
     ],
     "settings": {
-        "rulers": [100]
+        "rulers": [100],
+        "trim_trailing_white_space_on_save": "all"
     }
 }

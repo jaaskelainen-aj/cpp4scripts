@@ -148,7 +148,7 @@ proc_pipes::init_parent()
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stdout(iostream* pout)
+proc_pipes::read_child_stdout(ostream* pout)
 {
     static char out_buffer[MAX_PIPE_BUFFER];
     ssize_t rsize = read(fd_out[0], out_buffer, MAX_PIPE_BUFFER);
@@ -168,7 +168,7 @@ proc_pipes::read_child_stdout(iostream* pout)
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stderr(iostream* perr)
+proc_pipes::read_child_stderr(ostream* perr)
 {
     static char out_buffer[MAX_PIPE_BUFFER];
     ssize_t rsize = read(fd_err[0], out_buffer, MAX_PIPE_BUFFER);
@@ -188,7 +188,7 @@ proc_pipes::read_child_stderr(iostream* perr)
   \param input String to write.
 */
 size_t
-proc_pipes::write_child_input(std::iostream* input)
+proc_pipes::write_child_input(std::istream* input)
 {
     char buffer[1024];
     size_t cnt = 0, ss;
@@ -252,7 +252,7 @@ process::process(const char* cmd, const char* args)
   \param out Process output is sent to this stream.
   \param in Data from this stream is written to process stdin.
  */
-process::process(const char* cmd, const char* args, iostream* out, iostream* in)
+process::process(const char* cmd, const char* args, ostream* out, istream* in)
 {
     init_member_vars();
     set_command(cmd);
@@ -266,7 +266,7 @@ process::process(const char* cmd, const char* args, iostream* out, iostream* in)
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
 */
-process::process(const string& cmd, const char* args, iostream* out)
+process::process(const string& cmd, const char* args, ostream* out)
 {
     init_member_vars();
     set_command(cmd.c_str());
@@ -280,7 +280,7 @@ process::process(const string& cmd, const char* args, iostream* out)
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
 */
-process::process(const string& cmd, const string& args, iostream* out)
+process::process(const string& cmd, const string& args, ostream* out)
 {
     init_member_vars();
     set_command(cmd.c_str());

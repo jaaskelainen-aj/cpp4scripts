@@ -525,14 +525,12 @@ process::start(const char* args)
 void
 process::set_user(user* _owner)
 {
-    if (_owner && _owner->status() == 0)
-        owner = _owner;
-    else {
-#ifdef C4S_DEBUGTRACE
-        cerr << "process::set_user() - unable to set user.\n";
-#endif
-        owner = 0;
-    }
+    if (!_owner)
+        return;
+    if(_owner->status() > 0)
+        throw process_exception("process::set_user - User's information does not match system data."
+            " Unable to set user");
+    owner = _owner;
 }
 // -------------------------------------------------------------------------------------------------
 /*! Attaching allows developer to stop running processes by first attaching object to a process

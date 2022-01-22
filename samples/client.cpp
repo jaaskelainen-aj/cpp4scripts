@@ -4,27 +4,26 @@ Program to test the Cpp4Scripts process class
 Copyright (c) Menacon Ltd
 *******************************************************************************/
 #include <iostream>
+#include <sstream>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include "../cpp4scripts.hpp"
+
 using namespace std;
-#if defined(__linux) || defined(__APPLE__)
- #include <sys/types.h>
- #include <unistd.h>
-#else
- #include <windows.h>
-#endif
-#include "../c4s_all.hpp"
+using namespace c4s;
 
 program_arguments args;
 
 int main(int argc, char **argv)
 {
-    cout << "C4S test client\n";
-
-    args += argument("-w",  false, "Waits until SIG_TERM.");
+    args += argument("-w",  false, "Waits for 5s before reading stdin");
+    args += argument("-uid",false, "Put user and group id into log.");
     try{
-        args.initialize(argc,argv,1);
-    }catch(c4s_exception re){
+        args.initialize(argc,argv);
+    }catch(const c4s_exception& re){
+        cout << "Cpp4Scripts test client\n";
         args.usage();
         return 1;
     }
@@ -33,35 +32,30 @@ int main(int argc, char **argv)
         cout << "Failed to open output log. Aborted.\n";
         return 1;
     }
-#ifdef __linux
-    log << "Current real UID:"<<getuid()<<'\n';
-    log << "Current real GID:"<<getgid()<<'\n';
-    log << "Current effective UID:"<<geteuid()<<'\n';
-    log << "Current effective GID:"<<getegid()<<'\n';
-    log << endl;
-#endif
-
+    if (args.is_set("-uid")) {
+        log << "Current real UID:"<<getuid()<<'\n';
+        log << "Current real GID:"<<getgid()<<'\n';
+        log << "Current effective UID:"<<geteuid()<<'\n';
+        log << "Current effective GID:"<<getegid()<<'\n';
+        log << endl;
+    }
     if(args.is_set("-w")) {
-        cout<<"Waiting until terminated..."<<endl;
-        while(1)
+        for(int n=0; n<5; n++) {
             sleep(1);
+        }
     }
-    else {
-        if(c4s::wait_stdin(500)) {
-            log << "Detected stdin input. Reading untill EOF."<<endl;
-            char ch;
-            while(!feof(stdin)) {
-                fread(&ch,1,1,stdin);
-                if(ch == '\n') log << endl;
-                else log << ch;
+    ostringstream os;
+    if(c4s::wait_stdin(500)) {
+        log << "Detected stdin input. Reading untill EOF."<<endl;
+        char ch;
+        while(!feof(stdin)) {
+            if(fread(&ch,1,1,stdin)) {
+                log << ch;
+                os << ch;
             }
-            log << "\n<< Done with input.\n"<<endl;
         }
-        // Print the arguments
-        for(int ndx=0; ndx<argc; ndx++) {
-            log << "  Arg "<<ndx<<" : ["<<argv[ndx]<<"]\n";
-        }
+        log << "\n<< Done with input.\n"<<endl;
+        cout << os.str();
     }
-    cout << "Client done.\n";
     return 0;
 }

@@ -9,10 +9,14 @@
 
 #include <stdio.h>
 #include <string.h>
+#if defined(__linux) || defined(__APPLE__)
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#endif
+#ifdef _WIN32
 #include <direct.h>
+#endif
 #include "config.hpp"
 #include "exception.hpp"
 #include "path.hpp"
@@ -29,8 +33,10 @@ c4s::path::init_common()
 {
     change_time = 0;
     flag = false;
+#if defined(__linux) || defined(__APPLE__)
     owner = 0;
     mode = -1;
+#endif
 }
 // -------------------------------------------------------------------------------------------------
 c4s::path::path()
@@ -45,8 +51,10 @@ c4s::path::path(const path& _dir, const char* _base)
     dir = _dir.dir;
     if (_base)
         base = _base;
+#if defined(__linux) || defined(__APPLE__)
     owner = _dir.owner;
     mode = _dir.mode;
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -104,6 +112,7 @@ c4s::path::path(const char* d, const char* b)
 }
 
 // -------------------------------------------------------------------------------------------------
+#if defined(__linux) || defined(__APPLE__)
 c4s::path::path(const string& d, const string& b, user* o, int m)
 {
     set(d, b);
@@ -116,6 +125,7 @@ c4s::path::path(const string& p, user* o, int m)
     owner = o;
     mode = m;
 }
+#endif
 // -------------------------------------------------------------------------------------------------
 void c4s::path::operator=(const path& p)
 {
@@ -123,8 +133,10 @@ void c4s::path::operator=(const path& p)
     base = p.base;
     change_time = p.change_time;
     flag = p.flag;
+#if defined(__linux) || defined(__APPLE__)
     owner = p.owner;
     mode = p.mode;
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -140,7 +152,11 @@ c4s::path::set(const string& init)
 {
     string work;
     init_common();
+#ifdef C4S_FORCE_NATIVE_PATH
+    work = force_native_dsep(init);
+#else
     work = init;
+#endif
     size_t last = work.rfind(C4S_DSEP);
     if (last == string::npos) {
         dir.clear();
@@ -301,7 +317,11 @@ c4s::path::set_dir(const string& new_dir)
 {
     if (new_dir.empty())
         return;
+#ifdef C4S_FORCE_NATIVE_PATH
+    string work = append_slash(force_native_dsep(new_dir));
+#else
     string work = append_slash(new_dir);
+#endif
     if (work[0] == '~') {
         set_dir2home();
         dir += work.substr(2);
@@ -315,7 +335,16 @@ c4s::path::set_dir2home()
 {
     string home;
     if (!get_env_var("HOME", home)) {
+#if defined(__linux) || defined(__APPLE__)
         throw path_exception("path::set_dir2home error: Unable to find HOME environment variable");
+#endif
+#ifdef _WIN32
+        string homepath;
+        if (!get_env_var("HOMEDRIVE", home) || !get_env_var("HOMEPATH", homepath))
+            throw path_exception("path::set_dir2home error: Unable to find HOMEDRIVE or HOMEPATH "
+                                 "environment variable");
+        home += homepath;
+#endif
     }
     dir = home;
     if (dir.at(dir.size() - 1) != C4S_DSEP)
@@ -376,10 +405,18 @@ c4s::path::cd(const char* to)
     ostringstream os;
     if (!to || to[0] == 0)
         return;
+#if defined(__linux) || defined(__APPLE__)
     if (chdir(to)) {
         os << "Unable chdir to:" << to << " Error:" << strerror(errno);
         throw path_exception(os.str());
     }
+#endif
+#ifdef _WIN32
+    if (!SetCurrentDirectory(to)) {
+        os << "Unable chdir to:" << to << ". Error:" << strerror(GetLastError());
+        throw path_exception(os.str());
+    }
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -387,11 +424,21 @@ void
 c4s::path::read_cwd()
 {
     char chCwd[512];
+#if defined(__linux) || defined(__APPLE__)
     if (!getcwd(chCwd, sizeof(chCwd)))
         throw path_exception("Unable to get current dir");
+#endif
+#ifdef _WIN32
+    if (!GetCurrentDirectory(sizeof(chCwd), chCwd))
+        throw path_exception("Unable to get current dir");
+#endif
     dir = chCwd;
     dir += C4S_DSEP;
 }
+
+// ##########################################################################################
+// SECTION for Linux and Apple
+#if defined(__linux) || defined(__APPLE__)
 
 // -------------------------------------------------------------------------------------------------
 /** Checks the status of the path's owner.
@@ -419,6 +466,7 @@ c4s::path::owner_status()
     }
     return OWNER_STATUS::NOMATCH_UG;
 }
+
 // -------------------------------------------------------------------------------------------------
 /** Reads the current owner of the path on disk and loads this path with that particular user.
   If path does not exist an exception is thrown.
@@ -438,6 +486,7 @@ c4s::path::owner_read()
     }
     owner->set(dsbuf.st_uid, dsbuf.st_gid);
 }
+
 // -------------------------------------------------------------------------------------------------
 /** If current user does not have a permission to do so, an exception is thrown. File mode
   needs to be set separately.
@@ -473,11 +522,21 @@ c4s::path::read_mode()
     if (pm >= 0)
         mode = pm;
 }
+
+// SECTION for Linux and Apple ENDS
+// ##########################################################################################
+#endif
+
 // -------------------------------------------------------------------------------------------------
 bool
 c4s::path::is_absolute() const
 {
+#if defined(__linux) || defined(__APPLE__)
     if (dir.length() && dir[0] == '/')
+#endif
+#ifdef _WIN32
+        if (dir.length() && dir[1] == ':')
+#endif
             return true;
     return false;
 }
@@ -488,6 +547,7 @@ c4s::path::make_absolute()
 {
     if (is_absolute())
         return;
+#if defined(__linux) || defined(__APPLE__)
     char chCwd[512];
     if (!getcwd(chCwd, sizeof(chCwd))) {
         ostringstream eos;
@@ -495,6 +555,13 @@ c4s::path::make_absolute()
         throw path_exception(eos.str());
     }
     strcat(chCwd, "/");
+#endif
+#ifdef _WIN32
+    char chCwd[MAX_PATH];
+    if (!GetCurrentDirectory(sizeof(chCwd), chCwd))
+        throw path_exception("Unable to get current dir");
+    strcat(chCwd, "\\");
+#endif
     //    cout << "DEBUG - make_absolute original:"<<dir<<'\n';
     //    cout << "DEBUG - make_absolute current:"<<chCwd<<'\n';
     if (dir.length() && dir[0] == '.' && dir[1] == '.') {
@@ -629,11 +696,20 @@ c4s::path::merge(const path& append)
 bool
 c4s::path::dirname_exists() const
 {
+#if defined(__linux) || defined(__APPLE__)
     struct stat file_stat;
     if (!stat(get_dir_plain().c_str(), &file_stat)) {
         if (S_ISDIR(file_stat.st_mode))
             return true;
     }
+#endif
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (GetFileAttributesEx(get_dir_plain().c_str(), GetFileExInfoStandard, &fad) == FALSE)
+        return false;
+    if ((fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) > 0)
+        return true;
+#endif
     return false;
 }
 // -------------------------------------------------------------------------------------------------
@@ -676,18 +752,29 @@ c4s::path::mkdir() const
 //#ifdef _DEBUG
 //    cout << "DEBUG: fullpath: "<<fullpath<<'\n';
 //#endif
+#if defined(__linux) || defined(__APPLE__)
     size_t offset = 1;
+#endif
+#ifdef _WIN32
+    size_t offset = 3;
+#endif
     do {
         offset = fullpath.find(C4S_DSEP, offset + 1);
         mkpath.dir = (offset == string::npos) ? fullpath : fullpath.substr(0, offset + 1);
         if (!mkpath.dirname_exists()) {
+#if defined(__linux) || defined(__APPLE__)
             if (::mkdir(mkpath.get_dir().c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1)
+#endif
+#ifdef _WIN32
+                if (!CreateDirectory(mkpath.get_dir().c_str(), 0))
+#endif
                 {
                     ostringstream os;
                     os << "path::mkdir - Unable to create directory: " << mkpath.get_dir();
                     os << "\nFull path: " << fullpath;
                     throw path_exception(os.str().c_str());
                 }
+#if defined(__linux) || defined(__APPLE__)
             if (owner && owner->is_ok()) {
                 if (chown(mkpath.get_dir_plain().c_str(), owner->get_uid(), owner->get_gid())) {
                     ostringstream os;
@@ -706,6 +793,7 @@ c4s::path::mkdir() const
                     new_mode |= 0x1;
                 mkpath.chmod(new_mode);
             }
+#endif
         }
     } while (offset != string::npos);
 }
@@ -718,6 +806,7 @@ c4s::path::mkdir() const
 void
 c4s::path::rmdir(bool recursive) const
 {
+#if defined(__linux) || defined(__APPLE__)
     if (!::rmdir(dir.c_str()))
         return;
     if (errno == ENOENT)
@@ -768,7 +857,70 @@ c4s::path::rmdir(bool recursive) const
         os << "path::rmdir - Unable to remove directory: " << dir << '\n' << strerror(errno);
         throw path_exception(os.str().c_str());
     }
+#endif
+#ifdef _WIN32
+    // cout << "DEBUG - path::rmdir:"<<dir<<" | "<<get_dir_plain()<<'\n';
+    if (!RemoveDirectory(get_dir_plain().c_str())) {
+        int rv = GetLastError();
+        if (rv == ERROR_FILE_NOT_FOUND || rv == ERROR_PATH_NOT_FOUND)
+            return;
+        if (rv != ERROR_DIR_NOT_EMPTY) {
+            ostringstream os;
+            os << "path::rmdir - failed on directory: " << dir << ". Error " << rv << '\n'
+               << strerror(rv);
+            throw path_exception(os.str().c_str());
+        }
+        if (!recursive) {
+            ostringstream os;
+            os << "path::rmdir - Directory " << dir << " is not empty. Use force to override.";
+            throw path_exception(os.str().c_str());
+        }
+        // continues to recursive delete.
+    } else
+        return;
+
+    // Recursive delete since the directory was not empty
+    WIN32_FIND_DATA data;
+    HANDLE find;
+    BOOL findNext = TRUE;
+    char filename[MAX_PATH];
+    string searchDir(get_dir());
+    searchDir += "*";
+    // cout << "DEBUG - search:"<<searchDir<<'\n';
+    find = FindFirstFile(searchDir.c_str(), &data);
+    if (find == INVALID_HANDLE_VALUE) {
+        ostringstream os;
+        os << "path::rmdir - recursive delete failure for:" << searchDir;
+        throw path_exception(os.str());
+    }
+    while (findNext) {
+        strcpy(filename, dir.c_str());
+        strcat(filename, data.cFileName);
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) {
+            if (!((strlen(data.cFileName) == 1 && data.cFileName[0] == '.') ||
+                  (strlen(data.cFileName) == 2 && !strcmp(data.cFileName, "..")))) {
+                strcat(filename, "\\");
+                path(filename).rmdir(true);
+            }
+        } else {
+            if (!DeleteFile(filename)) {
+                ostringstream os;
+                os << "path::rmdir (recursive) - Unable to remove file:" << filename;
+                os << ". rmdir aborted. System error:" << strerror(GetLastError());
+                throw path_exception(os.str());
+            }
+        }
+        findNext = FindNextFile(find, &data);
+    }
+    FindClose(find);
+    if (!RemoveDirectory(get_dir().c_str())) {
+        ostringstream os;
+        os << "path::rmdir - recursive delete failure for:" << get_dir();
+        throw path_exception(os.str());
+    }
+#endif
 }
+
 // -------------------------------------------------------------------------------------------------
 /** If the base is empty function calls dirname_exists().  In Linux existence of symbolic link
   also returns true.
@@ -779,6 +931,8 @@ c4s::path::exists() const
 {
     if (base.empty())
         return dirname_exists();
+
+#if defined(__linux) || defined(__APPLE__)
     // Simply stat the file
     struct stat target;
     if (!lstat(get_path().c_str(), &target)) {
@@ -787,7 +941,27 @@ c4s::path::exists() const
         }
     }
     return false;
+#endif
+#ifdef _WIN32
+    char foundpath[MAX_PATH], **fnamePtr = 0;
+    DWORD rv;
+    if (dir.empty()) {
+        // Find file in current dir
+        char cwd[MAX_PATH];
+        if (!_getcwd(cwd, sizeof(cwd)))
+            throw path_exception("Unable to get current directory name.");
+        rv = SearchPath(cwd, base.c_str(), 0, sizeof(foundpath), foundpath, fnamePtr);
+        return rv == 0 ? false : true;
+    }
+    // Make absolute path.
+    // path path(fname);
+    // path.make_absolute();
+    // Search the file from the directory that it is expected from.
+    rv = SearchPath(dir.c_str(), base.c_str(), 0, sizeof(foundpath), foundpath, fnamePtr);
+    return rv == 0 ? false : true;
+#endif
 }
+
 // -------------------------------------------------------------------------------------------------
 /**
   \param envar Pointer to environment variable.
@@ -846,6 +1020,7 @@ c4s::path::outdated(path& target)
     }
     return false;
 }
+
 // -------------------------------------------------------------------------------------------------
 /**
    \param lst List of files to check.
@@ -865,6 +1040,7 @@ c4s::path::outdated(path_list& lst)
     }
     return false;
 }
+
 // -------------------------------------------------------------------------------------------------
 /**
   \param target Path to target file
@@ -896,6 +1072,7 @@ c4s::path::fnv_hash64() const
 TIME_T
 c4s::path::read_changetime()
 {
+#if defined(__linux) || defined(__APPLE__)
     struct stat statBuffer;
     if (stat(get_path().c_str(), &statBuffer)) {
         ostringstream os;
@@ -903,6 +1080,22 @@ c4s::path::read_changetime()
         throw path_exception(os.str());
     }
     change_time = statBuffer.st_mtime;
+#endif
+#ifdef _WIN32
+    HANDLE hfile = CreateFile(get_path().c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ, 0,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    if (hfile == INVALID_HANDLE_VALUE) {
+        ostringstream os;
+        os << "path::read_changetime - Unable to find source file:" << get_path().c_str();
+        throw path_exception(os.str());
+    }
+    if (!GetFileTime(hfile, 0, 0, (LPFILETIME)&change_time)) {
+        ostringstream os;
+        os << "path::read_changetime - Unable to find source file:" << get_path().c_str();
+        throw path_exception(os.str());
+    }
+    CloseHandle(hfile);
+#endif
     return change_time;
 }
 
@@ -1022,10 +1215,12 @@ c4s::path::cp(const path& to, int flags) const
     // Close the files and copy permissions.
     fclose(f_from);
     fclose(f_to);
+#if defined(__linux) || defined(__APPLE__)
     if (!IS(PCF_DEFPERM)) {
 #ifdef C4S_DEBUGTRACE
         cout << "path::cp - DEBUG: Setting permissions\n";
 #endif
+
         if (mode != -1)
             tmp_to.chmod(mode);
         else
@@ -1035,6 +1230,7 @@ c4s::path::cp(const path& to, int flags) const
             tmp_to.owner_write();
         }
     }
+#endif
 
     // If this was a move operation, remove the source file.
     if (IS(PCF_MOVE))
@@ -1094,6 +1290,7 @@ void
 c4s::path::copy_mode(const path& target) const
 {
     ostringstream ss;
+#if defined(__linux) || defined(__APPLE__)
     int src = open(get_path().c_str(), O_RDONLY);
     if (src == -1) {
         ss << "path::cp - unable to open source: " << get_path() << '\n';
@@ -1111,6 +1308,20 @@ c4s::path::copy_mode(const path& target) const
     // cout << "Debug: mode copied - "<<hex<<sbuf.st_mode<<dec<<'\n';
     close(src);
     close(tgt);
+#endif
+#ifdef _WIN32
+    DWORD attr = GetFileAttributes(get_path().c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES) {
+        ss << "Unable to get attributes for:" << get_path()
+           << " - Error:" << strerror(GetLastError());
+        throw path_exception(ss.str());
+    }
+    if (!SetFileAttributes(target.get_path().c_str(), attr)) {
+        ss << "Unable to set attributes for:" << target.get_path()
+           << " - Error:" << strerror(GetLastError());
+        throw path_exception(ss.str());
+    }
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1123,6 +1334,7 @@ c4s::path::copy_recursive(const path& target, int flags) const
 */
 {
     int copy_count = 0;
+#if defined(__linux) || defined(__APPLE__)
     // Open the directory
     DIR* source_dir = opendir(dir.c_str());
     if (!source_dir) {
@@ -1165,6 +1377,39 @@ c4s::path::copy_recursive(const path& target, int flags) const
         de = readdir(source_dir);
     }
     closedir(source_dir);
+#endif
+#ifdef _WIN32
+    path cp_source(dir);
+    WIN32_FIND_DATA data;
+    BOOL findNext = TRUE;
+    string searchDir(get_dir());
+    searchDir += "*";
+    HANDLE find = FindFirstFile(searchDir.c_str(), &data);
+    if (find == INVALID_HANDLE_VALUE) {
+        ostringstream os;
+        os << "path::cpr - recursive copy failure for:" << searchDir;
+        os << "\nSystem error: " << strerror(GetLastError());
+        throw path_exception(os.str());
+    }
+    while (findNext) {
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_NORMAL) == FILE_ATTRIBUTE_NORMAL) {
+            cp_source.base = data.cFileName;
+            copy_count += cp_source.cp(target, flags);
+        }
+        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) {
+            string sdir = dir;
+            sdir += data.cFileName;
+            sdir += C4S_DSEP;
+            path newsdir(sdir);
+            string tdir = dir;
+            tdir += data.cFileName;
+            sdir += C4S_DSEP;
+            copy_count += newsdir.copy_recursive(path(tdir), flags); // recursive copy
+        }
+        findNext = FindNextFile(find, &data);
+    }
+    FindClose(find);
+#endif
     return copy_count;
 }
 
@@ -1183,6 +1428,7 @@ c4s::path::ren(const string& new_base, bool force)
     string old = get_path();
     set_base(new_base);
     string nw = get_path();
+#if defined(__linux) || defined(__APPLE__)
     if (exists()) {
         if (force) {
             if (!rm()) {
@@ -1200,6 +1446,16 @@ c4s::path::ren(const string& new_base, bool force)
         ss << "path::ren from " << old << " to " << nw << " - error: " << strerror(errno);
         throw path_exception(ss.str());
     }
+#endif
+#ifdef _WIN32
+    DWORD flags = force ? MOVEFILE_REPLACE_EXISTING : 0;
+    if (!MoveFileEx(old.c_str(), nw.c_str(), flags)) {
+        set_base(old_base);
+        ostringstream ss;
+        ss << "path::ren from " << old << " to " << nw << " - error: " << strerror(GetLastError());
+        throw path_exception(ss.str());
+    }
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1212,6 +1468,7 @@ bool
 c4s::path::rm() const
 {
     string name = base.empty() ? get_dir_plain() : get_path();
+#if defined(__linux) || defined(__APPLE__)
     if (unlink(name.c_str()) < 0) {
         if (errno == ENOENT)
             return true;
@@ -1224,6 +1481,23 @@ c4s::path::rm() const
         estr << "path::rm - unable to delete" << get_path() << "; error:" << strerror(errno);
         throw path_exception(estr.str());
     }
+#endif
+#ifdef _WIN32
+    if (!DeleteFile(name.c_str())) {
+        DWORD le = GetLastError();
+        if (le == ERROR_FILE_NOT_FOUND)
+            return true;
+        if (le == ERROR_ACCESS_DENIED) {
+            if (!RemoveDirectory(name.c_str()))
+                return false;
+            return true;
+        }
+        ostringstream estr;
+        estr << "path::rm - Undetermined error " << le
+             << " for DeleteFile. Syserror: " << strerror(le) << '\n';
+        throw path_exception(estr.str());
+    }
+#endif
     return true;
 }
 
@@ -1242,12 +1516,30 @@ c4s::path::symlink(const path& link) const
     }
     string source = base.empty() ? get_dir_plain() : get_path();
     string linkname = link.base.empty() ? link.get_dir_plain() : link.get_path();
+#if defined(__linux) || defined(__APPLE__)
     if (::symlink(source.c_str(), linkname.c_str())) {
         ostringstream os;
         os << "path::symlink - Unable to create link '" << linkname << "' to '" << source << "' - "
            << strerror(errno);
         throw path_exception(os.str().c_str());
     }
+#endif
+#ifdef _WIN32
+
+#if (_WIN32_WINNT >= 0x0600) // Works only in Vista and above
+    if (!CreateSymbolicLink(linkname.c_str(), source.c_str(),
+                            base.empty() ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0)) {
+        ostringstream os;
+        os << "path::symlink - Unable to create link '" << linkname << "' to '" << source << "' - "
+           << strerror(errno);
+        throw path_exception(os.str().c_str());
+    }
+#endif
+#ifdef _WIN32
+    throw path_exception("path::symlink not supported in this version of Windows.");
+#endif
+
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1261,6 +1553,7 @@ void
 c4s::path::chmod(int mode_in)
 {
     ostringstream os;
+#if defined(__linux) || defined(__APPLE__)
     if (mode_in == -1) {
         if (mode >= 0)
             mode_in = mode;
@@ -1273,6 +1566,20 @@ c4s::path::chmod(int mode_in)
         os << "path::chmod failed - " << get_path() << " - Error:" << strerror(errno);
         throw path_exception(os.str());
     }
+#endif
+#ifdef _WIN32
+    if ((mode_in & 0x200) == 0)
+        return;
+    DWORD fattr = GetFileAttributes(get_path().c_str());
+    if (fattr == INVALID_FILE_ATTRIBUTES)
+        goto PATH_CHMOD;
+    fattr |= FILE_ATTRIBUTE_READONLY;
+    if (SetFileAttributes(get_path().c_str(), fattr) == TRUE)
+        return;
+PATH_CHMOD:
+    os << "path::chmod failed - " << get_path() << " - Error:" << strerror(GetLastError());
+    throw path_exception(os.str());
+#endif
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -1308,11 +1615,16 @@ c4s::path::dump(ostream& out)
     else
         cout << "false; ";
     cout << "time:" << change_time;
+#if defined(__linux) || defined(__APPLE__)
     cout << "; mode:" << hex << mode << dec << "; ";
     if (owner)
         owner->dump(out);
     else
         out << "owner: NULL;\n";
+#endif
+#ifdef _WIN32
+    cout << '\n';
+#endif
 }
 // -------------------------------------------------------------------------------------------------
 /** All instances of the search text are replaced. Thows an exception if files cannot be opened or

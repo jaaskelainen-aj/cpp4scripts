@@ -78,10 +78,12 @@ class path
     path(const std::string& d, const char* b);
     //! Constructs a path from directory and base
     path(const char* d, const char* b);
+#if defined(__linux) || defined(__APPLE__)
     //! Constructs path with user data
     path(const std::string& d, const std::string& b, user* o, int m = -1);
     //! Constructs path with user data
     path(const std::string& p, user* o, int m = -1);
+#endif
 
     //! Sets path so that it equals another path.
     void operator=(const path& p);
@@ -150,6 +152,7 @@ class path
     //! Reads the current workd directory and sets it to dir-part. Base is not affected.
     void read_cwd();
 
+#if defined(__linux) || defined(__APPLE__)
     //! Verifies that owner exists and the is owner of this path. (Linux only)
     OWNER_STATUS owner_status();
     //! Reads the owner information from the path. (Linux only)
@@ -170,7 +173,7 @@ class path
     user* get_owner() { return owner; }
     //! Reads current path mode from file system.
     void read_mode();
-
+#endif
     //! Returns true if path has directory part.
     bool is_dir() const { return dir.empty() ? false : true; }
     //! Returns true if path has a base i.e. filename
@@ -265,13 +268,16 @@ class path
     //! Recursive copy from this to target.
     int copy_recursive(const path&, int) const;
 
-    c4s::user* owner;   //!< Pointer to User and group for this file's permissions
-    int mode;           //!< Path/file access mode.
+#if defined(__linux) || defined(__APPLE__)
+    c4s::user* owner; //!< Pointer to User and group for this file's permissions
+    int mode;         //!< Path/file access mode.
+#endif
     TIME_T change_time; //!< Time that the file was last changed. Zero until internal function
                         //!< update_time has been called.
-    std::string dir;    //!< directory part of the path. Directory needs to end at the directory separator.
-    std::string base;   //!< Base name (file name) part of the path.
-    bool flag;          //!< General purpose flag for application use.
+    std::string
+        dir; //!< directory part of the path. Directory needs to end at the directory separator.
+    std::string base; //!< Base name (file name) part of the path.
+    bool flag;        //!< General purpose flag for application use.
     friend class path_list;
     friend bool compare_paths(c4s::path fp, c4s::path sp);
 };

@@ -148,7 +148,7 @@ proc_pipes::init_parent()
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stdout(ostream* pout)
+proc_pipes::read_child_stdout(iostream* pout)
 {
     static char out_buffer[MAX_PIPE_BUFFER];
     ssize_t rsize = read(fd_out[0], out_buffer, MAX_PIPE_BUFFER);
@@ -168,7 +168,7 @@ proc_pipes::read_child_stdout(ostream* pout)
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stderr(ostream* perr)
+proc_pipes::read_child_stderr(iostream* perr)
 {
     static char out_buffer[MAX_PIPE_BUFFER];
     ssize_t rsize = read(fd_err[0], out_buffer, MAX_PIPE_BUFFER);
@@ -188,7 +188,7 @@ proc_pipes::read_child_stderr(ostream* perr)
   \param input String to write.
 */
 size_t
-proc_pipes::write_child_input(std::istream* input)
+proc_pipes::write_child_input(std::iostream* input)
 {
     char buffer[1024];
     size_t cnt = 0, ss;
@@ -225,7 +225,7 @@ process::init_member_vars()
     last_ret_val = 0;
     stream_out = 0;
     stream_err = 0;
-    stream_source = 0;
+    stream_in = 0;
     pipes = 0;
     echo = false;
     owner = 0;
@@ -249,45 +249,52 @@ process::process(const char* cmd, const char* args)
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
-  \param out Process output is sent to this stream.
-  \param in Data from this stream is written to process stdin.
+  \param child_out Process output is sent to this stream.
+  \param child_in Data from this stream is written to process stdin.
+  \param _owner = User account that should be used to run the process.
  */
-process::process(const char* cmd, const char* args, ostream* out, istream* in)
+process::process(const char* cmd, const char* args, iostream* child_out, iostream* child_in, user* _owner)
 {
     init_member_vars();
     set_command(cmd);
     if (args)
         arguments << args;
-    stream_out = out;
-    stream_source = in;
+    stream_out = child_out;
+    stream_in = child_in;
+    if (_owner && _owner->status() > 0) {
+        throw process_exception("process::process - Invalid process owner.");
+        owner = _owner;
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
+  \param child_out Process output is sent to this stream.
 */
-process::process(const string& cmd, const char* args, ostream* out)
+process::process(const string& cmd, const char* args, iostream* child_out)
 {
     init_member_vars();
     set_command(cmd.c_str());
     if (args)
         arguments << args;
-    if (out)
-        stream_out = out;
+    if (child_out)
+        stream_out = child_out;
 }
 
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
+  \param child_out Process output is sent to this stream.
 */
-process::process(const string& cmd, const string& args, ostream* out)
+process::process(const string& cmd, const string& args, iostream* child_out)
 {
     init_member_vars();
     set_command(cmd.c_str());
     if (!args.empty())
         arguments << args;
-    if (out)
-        stream_out = out;
+    if (child_out)
+        stream_out = child_out;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -306,6 +313,33 @@ process::process(const char* cmd)
     init_member_vars();
     set_command(cmd);
 }
+// -------------------------------------------------------------------------------------------------
+/*! \param cmd Name of the command to execute. No arguments should be specified with command.
+ *  \param args Arguments to pass to the executable.
+ *  \param child_out Process output is sent to this stream.
+*/
+process::process(const path& bin, const char* args, std::iostream* out)
+{
+    struct stat sbuf;
+    init_member_vars();
+
+    command = bin;
+    command.make_absolute();
+    if(!command.exists()) {
+        command.clear();
+        throw process_exception("process::process - given command path not found.");
+    }
+    if (stat(command.get_path().c_str(), &sbuf) == -1 ||
+        !has_anybits(sbuf.st_mode, S_IXUSR | S_IXGRP | S_IXOTH))
+    {
+        throw process_exception("process::process - given command path is not executable.");
+    }
+    if (args)
+        arguments << args;
+    if (out)
+        stream_out = out;
+}
+
 // -------------------------------------------------------------------------------------------------
 /*! If the the daemon mode has NOT been set then the destructor kills the process if it is still
  * running.
@@ -517,8 +551,8 @@ process::start(const char* args)
     if (dynamic_buffer)
         delete[] dynamic_buffer;
     // If child input file has been defined, feed it to child.
-    if (stream_source) {
-        pipes->write_child_input(stream_source);
+    if (stream_in) {
+        pipes->write_child_input(stream_in);
     }
 }
 // -------------------------------------------------------------------------------------------------

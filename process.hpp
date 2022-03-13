@@ -26,9 +26,9 @@ class proc_pipes
     void reset();
     void init_child();
     void init_parent();
-    bool read_child_stdout(std::ostream*);
-    bool read_child_stderr(std::ostream*);
-    size_t write_child_input(std::istream*);
+    bool read_child_stdout(std::iostream*);
+    bool read_child_stderr(std::iostream*);
+    size_t write_child_input(std::iostream*);
     void close_child_input();
     size_t get_br_out() { return br_out; }
     size_t get_br_err() { return br_err; }
@@ -57,15 +57,18 @@ class process
     //! Creates a new process object from command and its arguments.
     process(const char*, const char* args);
     //! Creates a new proces, sets arguments and pipe target.
-    process(const char*, const char* args, std::ostream* out, std::istream* in=0);
+    process(const char*, const char* args, std::iostream* child_out, std::iostream* child_in, user *owner);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const char* args, std::ostream* out = 0);
+    process(const std::string&, const char* args, std::iostream* child_out = 0);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const std::string& args, std::ostream* out = 0);
+    process(const std::string&, const std::string& args, std::iostream* child_out = 0);
     //! Initializes the command only.
     process(const std::string&);
     //! Initializes the command only.
     process(const char*);
+    //! Create executable process from path
+    process(const path&, const char* args = 0, std::iostream* child_out = 0);
+
     //! Deletes the object and possibly kills the process.
     ~process();
 
@@ -98,11 +101,11 @@ class process
     void operator+=(const std::string& arg) { arguments << ' ' << arg; }
 
     //! Forward content from given stream into process' stdin
-    void pipe_from(std::istream* in) { stream_source = in; }
+    void pipe_from(std::iostream* child_in) { stream_in = child_in; }
     //! Pipes child stdout to given stream (file, stringstream or cout)
-    void pipe_to(std::ostream* out) { stream_out = out; }
+    void pipe_to(std::iostream* child_out) { stream_out = child_out; }
     //! Pipes child stderr to given stream (file, stringstream or cout)
-    void pipe_err(std::ostream* out) { stream_err = out; }
+    void pipe_err(std::iostream* child_err) { stream_err = child_err; }
     //! Disables piping from child's stderr and stdout all together.
     void pipe_null() { stream_out = 0; stream_err = 0; }
     //! Closes the send pipe to client.
@@ -196,9 +199,9 @@ class process
     int last_ret_val;
     bool daemon; //!< If true then the process is to be run as daemon and should not be terminated
                  //!< at class dest
-    std::ostream* stream_out; //!< Stream for process stdout
-    std::ostream* stream_err; //!< Stream for process stderr
-    std::istream* stream_source; //!< Pipe source i.e. process stdin
+    std::iostream* stream_out; //!< Stream for process stdout
+    std::iostream* stream_err; //!< Stream for process stderr
+    std::iostream* stream_in; //!< Pipe source i.e. process stdin
     path stdin_path;      //!< If defined and exists, files content will be used as input to process.
     proc_pipes* pipes; //!< Pipe to child for input and output. Valid when child is running.
     bool echo; //!< If true then the commands are echoed to stdout before starting them. Use for

@@ -38,12 +38,10 @@ builder::builder(path_list* _sources, const char* _name, ostream* _log)
 {
     sources = _sources;
     my_sources = false;
-    if (log) {
-        compiler.pipe_to(log);
-        compiler.pipe_err(log);
-        linker.pipe_to(log);
-        linker.pipe_err(log);
-    }
+    compiler.pipe_to(&build_log);
+    compiler.pipe_err(&build_log);
+    linker.pipe_to(&build_log);
+    linker.pipe_err(&build_log);
     timeout = 30;
 }
 // -------------------------------------------------------------------------------------------------
@@ -59,10 +57,10 @@ builder::builder(const char* _name, ostream* _log)
   , name(_name)
 {
     if (log) {
-        compiler.pipe_to(log);
-        compiler.pipe_err(log);
-        linker.pipe_to(log);
-        linker.pipe_err(log);
+        compiler.pipe_to(&build_log);
+        compiler.pipe_err(&build_log);
+        linker.pipe_to(&build_log);
+        linker.pipe_err(&build_log);
     }
     timeout = 20;
     try {
@@ -189,6 +187,8 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
     ostringstream options;
     bool exec = false;
     bool logging = log && has_any(BUILD::VERBOSE);
+    time_t cs;
+    string output_line;
 
     if (!sources)
         throw c4s_exception("builder::compile - sources not defined!");
@@ -200,9 +200,6 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
         for (src = sources->begin(); src != sources->end(); src++) {
             current_obj.set(build_dir + C4S_DSEP, src->get_base_plain(), out_ext);
             if (src->outdated(current_obj) || (!has_any(BUILD::NOINCLUDES) && check_includes(*src))) {
-                if (compiler.is_running() && compiler.wait_for_exit(timeout)) {
-                    return BUILD_STATUS::ERROR;
-                }
                 if (log && echo_name)
                     *log << src->get_base() << " >>\n";
                 options.str("");
@@ -213,6 +210,17 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
                     *log << "  " << options.str() << '\n';
                 compiler.start(options.str().c_str());
                 exec = true;
+                cs = time(0);
+                while (compiler.is_running() && time(0)-cs < timeout) {
+                    if (log) {
+                        while (getline(build_log, output_line))
+                            *log << output_line;
+                    }
+                }
+                if (time(0)-cs >= timeout)
+                    return BUILD_STATUS::TIMEOUT;
+                if (compiler.last_return_value())
+                    return BUILD_STATUS::ERROR;
             }
         }
         current_obj.clear();
@@ -246,6 +254,7 @@ builder::link(const char* out_ext, const char* out_arg)
 {
     BUILD_STATUS bs;
     ostringstream options;
+    string output_line;
     if (!sources)
         throw c4s_exception("builder::link - sources not defined!");
     if (!out_ext)
@@ -281,12 +290,11 @@ builder::link(const char* out_ext, const char* out_arg)
         if (log && has_any(BUILD::VERBOSE))
             *log << "Link options: " << options.str() << '\n';
         int rv = linker.exec(options.str(), 3 * timeout);
-        if(rv) {
-            if(log)
-                *log << "builder::link - returned: "<<rv<<'\n';
-            bs = BUILD_STATUS::ERROR;
-        } else
-            bs = BUILD_STATUS::OK;
+        if (log) {
+            while (getline(build_log, output_line))
+                *log << output_line;
+        }
+        bs = rv ? BUILD_STATUS::ERROR : BUILD_STATUS::OK;
     } catch (const process_timeout &pt) { 
         if (log)
             *log << "builder::link - timeout\n";

@@ -1,9 +1,10 @@
 /*******************************************************************************
 process.cpp
+This is a sample for Cpp4Scripting library.
 
-This is a sample for Cpp4Scripting library. It demonstrates the use of program
-arguments and processes.
-
+../makec4s --dev -s process.cpp
+................................................................................
+License: LGPLv3
 Copyright (c) Menacon Ltd
 *******************************************************************************/
 
@@ -123,13 +124,21 @@ void test7()
 // ..........................................................................................
 void test8()
 {
-    stringstream os, is;
+    istringstream is;
+    ostringstream os;
 
     is << "1234567890abcdefg";
-    cout << "To client  : 1234567890abcdefg\n";
-    process cli("client", 0, &os, &is);
+    cout << ">> 1234567890abcdefg\n";
+    process cli("echo", "-l", &is, &os);
     cli();
-    cout << "From client: " << os.str() << '\n';
+    for (string line; is.getline(line); )
+        cout << "<< " << line << '\n';
+
+    cout << ">> abcdefg1234567890\n";
+    is << "abcdefg1234567890\n";
+    cli();
+    for (string line; is.getline(line); )
+        cout << "<< " << line << '\n';
 }
 // ..........................................................................................
 void test9()
@@ -166,7 +175,7 @@ int main(int argc, char **argv)
         { &test5, "Run test client with couple of simple params. Pipe to stdout."},
         { &test6, "Test the use of execa - running same process with varied arguments."},
         { &test7, "Test the use of process user (linux only)"},
-        { &test8, "Test the input stream with client."},
+        { &test8, "Test the input stream with echo-client."},
         { &test9, "Terminate process with pid file (-pf)"},
         { &test10, "Empty constructor, add command, add parameters"},
         { 0, 0}

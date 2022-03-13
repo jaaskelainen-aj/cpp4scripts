@@ -27,6 +27,11 @@ int run_tests(int argc, char **argv, TestItem *tests)
 
     try {
 	    args.initialize(argc,argv,1);
+	} catch(const runtime_error& re) {
+		args.usage();
+		return 1;
+	}
+    try {
 	    if (args.is_set("--help")) {
 	    	args.usage();
 	    	return 0;
@@ -56,7 +61,6 @@ int run_tests(int argc, char **argv, TestItem *tests)
 	    }
     } catch(const runtime_error& re) {
         cerr << "Unit test failure: " << re.what() << endl;
-        args.usage();
         return 1;
     }
     cout << ">> test completed.\n";

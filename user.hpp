@@ -70,7 +70,8 @@ class user
     //! Returns true if the user and group names have not been specified.
     bool empty() { return name.empty() && group.empty() ? true : false; }
     //! Returns true if given ids match this user.
-    bool match(int uid, int gid);
+    bool match(int uid, int gid) const;
+    bool match(const user&) const;
 
     //! Returns user's name.
     std::string get_name() { return name; }
@@ -84,7 +85,7 @@ class user
     //! Returns true if this user is designated as root/admin
     bool is_admin() { return (status() == 0 && uid == 0) ? true : false; }
     //! Returns true if user's name and group can be found from the system.
-    bool is_ok() { return (uid >= 0 || gid >= 0) ? true : false; }
+    bool is_ok() const { return (uid >= 0 || gid >= 0) ? true : false; }
 
     static user get_current();
     //! Writes user's attributes to given stream. Use for debugging.

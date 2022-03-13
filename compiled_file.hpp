@@ -85,9 +85,7 @@ class compiled_file
     void update()
     {
         source.cp(target, PCF_FORCE);
-        if (target.has_owner())
-            target.owner_write();
-        target.chmod();
+        target.ch_owner_mode();
     }
 #else
     //! Copies the source over the target

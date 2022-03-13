@@ -6,14 +6,15 @@ Use of path and path_list is tested and demonstrated.
 License: LGPLv3
 Copyright (c) Menacon Ltd, Finland
 *******************************************************************************/
-#define _CRT_SECURE_NO_WARNINGS
+
 #include <sstream>
 #include <fstream>
-#include "../c4s_all.hpp"
+#include "../cpp4scripts.hpp"
+
+using namespace std;
 using namespace c4s;
 
-program_arguments args;
-typedef void (*tfptr)();
+#include "run_tests.cpp"
 
 // -------------------------------------------------------------------------------------------------
 void test1()
@@ -82,19 +83,40 @@ void test3()
 // -------------------------------------------------------------------------------------------------
 void test4()
 {
-#ifdef __linux
-    user tu("testu","users");
-    path lp("this/is/long/test/path/file.txt",&tu,0x660);
+#ifndef _WIN32
+    user udir("c4s_dir","users");
+    user ufile("c4s_file","users");
+
+    cout << "Creating temp users: c4s_dir, c4s_file\n";
+    udir.create();
+    ufile.create();
+    const char* fname = "/tmp/long/test/path/file.txt";
+    cout << "Target file: " << fname << '\n';
+    path lp(fname, &ufile, 0x660);
     try {
-        lp.mkdir();
+        lp.mkdir(&udir, 0x755);
         ofstream of(lp.get_path().c_str());
         of << "Test file created\n";
         of.close();
+        lp.ch_owner_mode();
+
+        user rpowner;
+        path rp(fname, &rpowner);
+        rp.read_owner_mode();
+
+        if (lp.get_path().compare(rp.get_path()) != 0)
+            cout << "Name mismatch.\n";
+        else if (lp.get_mode() != rp.get_mode())
+            cout << "Mode mismatch\n";
+        else if (!rpowner.match(ufile)) {
+            cout << "User mismatch\n";
+            rpowner.dump(cout);
+        }
+        else
+            cout << "Test OK.\n";
     }catch(const c4s_exception &ce) {
         cerr << "Test 4 failed: "<<ce.what()<<'\n';
-        return;
     }
-    cout << "Test file created: "<<lp.get_path()<<'\n';
 #else
     cout << "Not supported in this environment!\n";
 #endif
@@ -265,25 +287,22 @@ void test13()
 // ==========================================================================================
 int main(int argc, char **argv)
 {
-    const int tmax = 13;
-    tfptr tfunc[tmax] = { &test1, &test2, &test3, &test4, &test5, &test6, &test7, &test8, &test9,
-        &test10, &test11, &test12, &test13 };
-
-    const char *title = "Cpp4Scripts - Path sample and test program";
-    const char *info  = "Following tests have been defined:\n"\
-        " 1 = path_list, mkdir: copies *.cpp files from current dir to c4stest dir.\n"\
-        " 2 = rmdir recursive: removes the c4stest dir from the current dir.\n"\
-        " 3 = cp: copy c4s-path.cpp to c4s-path.tmp.\n"\
-        " 4 = mkdir recursive: Creates long path and sets user rights on the way\n"\
-        " 5 = path_list: Tests path list cration options.\n"\
-        " 6 = path_list: Test relative paths for path list.\n"\
-        " 7 = cat function: puts together two files.\n"\
-        " 8 = path constructors.\n"\
-        " 9 = Search-replace.\n"\
-        "10 = Replace block.\n"\
-        "11 = Replace block within custom tags.\n"\
-        "12 = Path construction with const char* and const string&.\n"\
-        "13 = path_list: test exclude regex. (-s search regex; -e exclude regex).\n";
+    TestItem tests[] = {
+        { &test1,  "path_list, mkdir: copies *.cpp files from current dir to c4stest dir."},
+        { &test2,  "rmdir recursive: removes the c4stest dir from the current dir."},
+        { &test3,  "cp: copy c4s-path.cpp to c4s-path.tmp."},
+        { &test4,  "mkdir recursive: Creates long path and sets user rights on the way"},
+        { &test5,  "path_list: Tests path list cration options."},
+        { &test6,  "path_list: Test relative paths for path list."},
+        { &test7,  "cat function: puts together two files."},
+        { &test8,  "path constructors."},
+        { &test9,  "Search-replace."},
+        { &test10, "Replace block."},
+        { &test11, "Replace block within custom tags."},
+        { &test12, "Path construction with const char* and const string&."},
+        { &test13, "path_list: test exclude regex. (-s search regex; -e exclude regex)."},
+        { 0, 0}
+    };
 
     args += argument("-t",  true, "Sets VALUE as the test to run.");
     args += argument("-s",  true, "Sets VALUE as the text to search.");
@@ -291,26 +310,5 @@ int main(int argc, char **argv)
     args += argument("-e",  true, "Sets VALUE as end tag for replace block.");
     args += argument("-f",  true, "File to open in search and replace tests.");
 
-    try{
-        args.initialize(argc,argv,1);
-    }catch(const c4s_exception &){
-        cout << title <<'\n';
-        args.usage();
-        cout << info <<'\n';
-        return 1;
-    }
-
-    if(!args.is_set("-t")) {
-        cout << "Missing -t argument\n";
-        return 1;
-    }
-    istringstream iss(args.get_value("-t"));
-    int test;
-    iss >> test;
-    if(test>0 && test<=tmax)
-        tfunc[test-1]();
-    else
-        cout << "Unknown test number: "<<test<<'\n';
-
-    return 0;
+    return run_tests(argc, argv, tests);
 }

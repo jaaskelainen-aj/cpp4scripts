@@ -66,7 +66,7 @@ class path
     //! Copy constructor.
     path(const path& p) { *this = p; }
     //! Constructs path from dir part and given base.
-    path(const path& dir, const char* base);
+    path(const path& dir, const char* base, user* o=0, int m = -1);
     //! Constructs path from single string.
     path(const std::string& p);
     //! Path constructor. Combines path from directory, base and extension.
@@ -150,26 +150,36 @@ class path
     //! Reads the current workd directory and sets it to dir-part. Base is not affected.
     void read_cwd();
 
-    //! Verifies that owner exists and the is owner of this path. (Linux only)
+    //! Verifies that owner exists and the is owner of this path.
     OWNER_STATUS owner_status();
-    //! Reads the owner information from the path. (Linux only)
+    //! Reads the owner information from the path.
     void owner_read();
-    //! Writes the current owner to disk, i.e. possibly changes ownership.  (Linux only)
+    //! Writes the current owner to disk, i.e. possibly changes ownership
     void owner_write();
-    //! Sets the user and mode for this path. Does not commit change to disk. (Linux only)
-    void set(user* u, int m)
-    {
-        owner = u;
-        mode = m;
-    }
-    //! Sets the user for the path. Does not commit change to disk. (Linux only)
-    void set_owner(user* u) { owner = u; }
+    //! Sets the user for this path. Does not commit change to disk.
+    void owner_set(user* u) { owner = u; }
     //! Returns true if the owner has bee defined for this path.
-    bool has_owner() { return owner ? true : false; }
-    //! Returns the user for this path. (Linux only)
     user* get_owner() { return owner; }
+
+    //! Returns current file mode
+    int get_mode() { return  mode; }
     //! Reads current path mode from file system.
     void read_mode();
+    //! Changes file / directory permissions.
+    void chmod(int mod = -1);
+
+    //! Read both owner and mode.
+    void read_owner_mode() {
+        owner_read();
+        read_mode();
+    }
+    // Changes both owner and mode for the path and commits changes to disk.
+    void ch_owner_mode(user* _owner=0, int _mode = -1) {
+        if (_owner) owner = _owner;
+        if (_mode != -1)  mode = _mode;
+        if (owner) owner_write();
+        if (mode != -1) chmod();
+    }
 
     //! Returns true if path has directory part.
     bool is_dir() const { return dir.empty() ? false : true; }
@@ -213,7 +223,9 @@ class path
     int compare(const path& target, unsigned char flag) const;
 
     //! Creates the directory specified by the directory part of the path.
-    void mkdir() const;
+    void mkdir() const { mkdir(owner, mode); }
+    void mkdir(c4s::user* owner, int mode) const;
+
     //! Removes the directory from the disk this path points to.
     void rmdir(bool recursive = false) const;
 
@@ -233,8 +245,6 @@ class path
     bool rm() const;
     //! Make symbolic link
     void symlink(const path&) const;
-    //! Changes file / directory permissions.
-    void chmod(int mod = -1);
 
     //! Reads the last change time from the disk.
     TIME_T read_changetime();

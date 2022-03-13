@@ -362,7 +362,7 @@ c4s::path_list::set_usermode(user* uptr, const int mode)
 {
     list<path>::iterator pi;
     for (pi = plist.begin(); pi != plist.end(); pi++)
-        pi->set(uptr, mode);
+        pi->ch_owner_mode(uptr, mode);
 }
 #endif
 // -------------------------------------------------------------------------------------------------

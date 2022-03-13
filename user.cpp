@@ -297,7 +297,7 @@ c4s::user::read()
   \retval bool True on match, false if not.
 */
 bool
-c4s::user::match(int id_u, int id_g)
+c4s::user::match(int id_u, int id_g) const
 {
     if (!is_ok())
         return false;
@@ -318,7 +318,14 @@ c4s::user::match(int id_u, int id_g)
     }
     return false;
 }
-
+bool user::match(const user& target) const
+{
+    if (!name.empty() && name.compare(target.name))
+        return false;
+    if (!group.empty() && group.compare(target.group))
+        return false;
+    return match(target.uid, target.gid);
+}
 // -------------------------------------------------------------------------------------------------
 //! Fills this object with information for the current process owner.
 user

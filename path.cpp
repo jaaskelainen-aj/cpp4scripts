@@ -12,7 +12,6 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <direct.h>
 #include "config.hpp"
 #include "exception.hpp"
 #include "path.hpp"
@@ -37,18 +36,22 @@ c4s::path::path()
 {
     init_common();
 }
-
 // -------------------------------------------------------------------------------------------------
-c4s::path::path(const path& _dir, const char* _base)
+c4s::path::path(const path& _dir, const char* _base, user* _owner, int _mode)
 {
     init_common();
     dir = _dir.dir;
     if (_base)
         base = _base;
-    owner = _dir.owner;
-    mode = _dir.mode;
+    if (_owner)
+        owner = _owner;
+    else
+        owner = _dir.owner;
+    if (_mode)
+        mode = _mode;
+    else
+        mode = _dir.mode;
 }
-
 // -------------------------------------------------------------------------------------------------
 /** If string has dir separator as last character then the base is empty. If no directory
   separators are detected then the dir is empty.
@@ -58,7 +61,6 @@ c4s::path::path(const string& p)
 {
     set(p);
 }
-
 // -------------------------------------------------------------------------------------------------
 c4s::path::path(const string& d, const string& b, const string& e)
 {
@@ -77,10 +79,8 @@ c4s::path::path(const char* d, const char* b, const char* e)
 // -------------------------------------------------------------------------------------------------
 c4s::path::path(const string& d, const string& b)
 {
-
     set(d, b);
 }
-
 // -------------------------------------------------------------------------------------------------
 c4s::path::path(const string& d, const char* b)
 {
@@ -102,7 +102,6 @@ c4s::path::path(const char* d, const char* b)
     else if (d && !b)
         set_dir(string(d));
 }
-
 // -------------------------------------------------------------------------------------------------
 c4s::path::path(const string& d, const string& b, user* o, int m)
 {
@@ -126,7 +125,6 @@ void c4s::path::operator=(const path& p)
     owner = p.owner;
     mode = p.mode;
 }
-
 // -------------------------------------------------------------------------------------------------
 /** If the string ends with directory separator string is copied into dir and base is left
   empty. If the string does not have any directory separators string is copied to base and dir is
@@ -156,7 +154,6 @@ c4s::path::set(const string& init)
     set_dir(work.substr(0, last));
     base = work.substr(last + 1);
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
    \param dir_in Directory name.
@@ -263,7 +260,6 @@ c4s::path::get_base(const string& ext) const
         return base + ext;
     return base.substr(0, loc) + ext;
 }
-
 // -------------------------------------------------------------------------------------------------
 string
 c4s::path::get_base_or_dir()
@@ -275,7 +271,6 @@ c4s::path::get_base_or_dir()
         return dir;
     return dir.substr(loc + 1);
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   \retval string Extension of the file name part. Empty string is returned if extension does not
@@ -308,7 +303,6 @@ c4s::path::set_dir(const string& new_dir)
     } else
         dir = work;
 }
-
 // -------------------------------------------------------------------------------------------------
 void
 c4s::path::set_dir2home()
@@ -321,7 +315,6 @@ c4s::path::set_dir2home()
     if (dir.at(dir.size() - 1) != C4S_DSEP)
         dir += C4S_DSEP;
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   \param newb New base. If empty the base is cleared.
@@ -364,7 +357,6 @@ c4s::path::get_base_plain() const
         return base;
     return base.substr(0, extOffset);
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   \param to Directory to change to.
@@ -381,7 +373,6 @@ c4s::path::cd(const char* to)
         throw path_exception(os.str());
     }
 }
-
 // -------------------------------------------------------------------------------------------------
 void
 c4s::path::read_cwd()
@@ -392,7 +383,6 @@ c4s::path::read_cwd()
     dir = chCwd;
     dir += C4S_DSEP;
 }
-
 // -------------------------------------------------------------------------------------------------
 /** Checks the status of the path's owner.
  *  \retval c4s::OWNER
@@ -431,7 +421,8 @@ c4s::path::owner_read()
         throw path_exception("Cannot read owner for non-existing path.");
     if (!owner)
         throw path_exception("Cannot read owner into null.");
-    if (stat(get_dir_plain().c_str(), &dsbuf)) {
+    string fp = base.empty() ? get_dir_plain() : get_path();
+    if (stat(fp.c_str(), &dsbuf)) {
         ostringstream os;
         os << "Unable to get ownership for file:" << get_path() << ". Error:" << strerror(errno);
         throw path_exception(os.str());
@@ -481,7 +472,6 @@ c4s::path::is_absolute() const
             return true;
     return false;
 }
-
 // -------------------------------------------------------------------------------------------------
 void
 c4s::path::make_absolute()
@@ -517,7 +507,6 @@ c4s::path::make_absolute()
         dir.insert(0, chCwd);
     //    cout << "DEBUG - Make absolute final:"<<dir<<'\n';
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  Root is expected to be absolute directory and this path relative. If this path is absolute
   the current dir is simply replaced with root.  Otherwise this relative dir is added into the
@@ -544,7 +533,6 @@ c4s::path::make_absolute(const string& root)
     tmp.replace(offset + 1, root.length() - offset + 1, dir);
     dir = tmp;
 }
-
 // -------------------------------------------------------------------------------------------------
 void
 c4s::path::make_relative()
@@ -567,7 +555,6 @@ c4s::path::make_relative(const path& parent)
         return;
     dir.erase(0, parent.dir.size());
 }
-
 // -------------------------------------------------------------------------------------------------
 /** If count is larger than directories in path then the dir part is left empty.
 
@@ -589,7 +576,6 @@ c4s::path::rewind(int count)
     else
         dir.clear();
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  First base is directly copied from append-path. Then the directories are merged. If append
   directory is absolute it is simply copied over this dir.  If append directory has .. - this
@@ -624,7 +610,6 @@ c4s::path::merge(const path& append)
     } else
         dir += append.dir;
 }
-
 // -------------------------------------------------------------------------------------------------
 bool
 c4s::path::dirname_exists() const
@@ -654,15 +639,15 @@ c4s::path::compare(const path& target, unsigned char option) const
     }
     return base.compare(target.base);
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  If the dir is relative the dir is first translated to absolute path using current
   directory as reference point. Function is able to create entire tree specified by this
-  path. Linus note! if owner and/or mode is specified for this path they are automatically used
-  as directory is created.
+  path.
+  \param l_mode     if specified will be used as mode when directory is created.
+  \param l_owner    if specified will be used as directory owner when it is created.
 */
 void
-c4s::path::mkdir() const
+c4s::path::mkdir(c4s::user* l_owner, int l_mode) const
 {
     string fullpath;
     path mkpath;
@@ -673,9 +658,9 @@ c4s::path::mkdir() const
         tmp.make_absolute();
         fullpath = tmp.get_dir();
     }
-//#ifdef _DEBUG
-//    cout << "DEBUG: fullpath: "<<fullpath<<'\n';
-//#endif
+#ifdef C4S_DEBUGTRACE
+    cout << "DEBUG: fullpath: "<<fullpath<<'\n';
+#endif
     size_t offset = 1;
     do {
         offset = fullpath.find(C4S_DSEP, offset + 1);
@@ -685,31 +670,29 @@ c4s::path::mkdir() const
                 {
                     ostringstream os;
                     os << "path::mkdir - Unable to create directory: " << mkpath.get_dir();
-                    os << "\nFull path: " << fullpath;
                     throw path_exception(os.str().c_str());
                 }
-            if (owner && owner->is_ok()) {
-                if (chown(mkpath.get_dir_plain().c_str(), owner->get_uid(), owner->get_gid())) {
+            if (l_owner && l_owner->is_ok()) {
+                if (chown(mkpath.get_dir_plain().c_str(), l_owner->get_uid(), l_owner->get_gid())) {
                     ostringstream os;
-                    os << "path::mkdir - Unable to set path owner for " << get_path()
+                    os << "path::mkdir - Unable to set path owner for dir " << mkpath.get_dir_plain()
                        << " - system error: " << strerror(errno);
                     throw c4s_exception(os.str());
                 }
             }
-            if (mode != -1) {
-                int new_mode = mode;
-                if ((mode & 0x400) > 0)
+            if (l_mode != -1) {
+                int new_mode = l_mode;
+                if ((l_mode & 0x400) > 0)
                     new_mode |= 0x100;
-                if ((mode & 0x40) > 0)
+                if ((l_mode & 0x40) > 0)
                     new_mode |= 0x10;
-                if ((mode & 0x4) > 0)
+                if ((l_mode & 0x4) > 0)
                     new_mode |= 0x1;
                 mkpath.chmod(new_mode);
             }
         }
     } while (offset != string::npos);
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  Base name is ignored. If recursive is not set then the exception is thrown if the
   directory is not empty. If directory is not found this function does nothing.
@@ -824,7 +807,6 @@ c4s::path::exists_in_env_path(const char* envar, bool set_dir)
     dir = backupDir;
     return false;
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  This file should be the source file checked against compile output.
 
@@ -891,7 +873,6 @@ c4s::path::fnv_hash64() const
     // magic 64bit salt for fnv
     return fnv_hash64_file(get_pp(), FNV_1_PRIME);
 }
-
 // -------------------------------------------------------------------------------------------------
 TIME_T
 c4s::path::read_changetime()
@@ -905,7 +886,6 @@ c4s::path::read_changetime()
     change_time = statBuffer.st_mtime;
     return change_time;
 }
-
 // -------------------------------------------------------------------------------------------------
 void
 c4s::path::unix2dos()
@@ -1041,7 +1021,6 @@ c4s::path::cp(const path& to, int flags) const
         rm();
     return 1;
 }
-
 // -------------------------------------------------------------------------------------------------
 void
 c4s::path::cat(const path& tail) const
@@ -1084,7 +1063,6 @@ c4s::path::cat(const path& tail) const
     target.close();
     tfil.close();
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  In Windos this only copies file time-attributes only.
 
@@ -1112,7 +1090,6 @@ c4s::path::copy_mode(const path& target) const
     close(src);
     close(tgt);
 }
-
 // -------------------------------------------------------------------------------------------------
 int
 c4s::path::copy_recursive(const path& target, int flags) const
@@ -1167,7 +1144,6 @@ c4s::path::copy_recursive(const path& target, int flags) const
     closedir(source_dir);
     return copy_count;
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   Renames the file pointed by this path. Only the base name is affected. Use copy function to
@@ -1201,7 +1177,6 @@ c4s::path::ren(const string& new_base, bool force)
         throw path_exception(ss.str());
     }
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   Removes the file from the disk. Removes empty directories as well. If file does not exist or
@@ -1226,7 +1201,6 @@ c4s::path::rm() const
     }
     return true;
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   Creates a named symbolic link to current path.
@@ -1249,7 +1223,6 @@ c4s::path::symlink(const path& link) const
         throw path_exception(os.str().c_str());
     }
 }
-
 // -------------------------------------------------------------------------------------------------
 /**  In Windows environment file is changed to read-only if user write flag is not set.
 
@@ -1274,7 +1247,6 @@ c4s::path::chmod(int mode_in)
         throw path_exception(os.str());
     }
 }
-
 // -------------------------------------------------------------------------------------------------
 /**
   Sample: if this path's directory is '/original/short/' and src is '/path/to/append/' this path
@@ -1380,7 +1352,6 @@ c4s::path::search_replace(const string& search, const string& replace, bool back
     }
     return count;
 }
-
 // -------------------------------------------------------------------------------------------------
 /** Relaces the text between start and end tags with the given replacement string. Only first
   instance is replaced. Replace tags are left in place, only text in between is replaced. Throws

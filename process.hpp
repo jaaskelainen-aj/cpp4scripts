@@ -9,6 +9,8 @@
 #ifndef C4S_PROCESS_HPP
 #define C4S_PROCESS_HPP
 
+#include "RingBuffer.hpp"
+
 namespace c4s {
 
 class compiled_file;
@@ -26,21 +28,20 @@ class proc_pipes
     void reset();
     void init_child();
     void init_parent();
-    bool read_child_stdout(std::iostream*);
-    bool read_child_stderr(std::iostream*);
+    bool read_child_stdout(RingBuffer*);
+    bool read_child_stderr(RingBuffer*);
     size_t write_child_input(std::iostream*);
     void close_child_input();
-    size_t get_br_out() { return br_out; }
-    size_t get_br_err() { return br_err; }
 
   protected:
-    size_t br_out, br_err;
     bool send_ctrlZ;
     int fd_out[2];
     int fd_err[2];
     int fd_in[2];
     size_t br_in;
 };
+
+enum class PIPE { NONE, SM, LG };
 
 // -------------------------------------------------------------------------------------------------
 //! Class encapsulates an executable process.
@@ -55,19 +56,17 @@ class process
     //! Default constructor.
     process() { init_member_vars(); }
     //! Creates a new process object from command and its arguments.
-    process(const char*, const char* args);
-    //! Creates a new proces, sets arguments and pipe target.
-    process(const char*, const char* args, std::iostream* child_out, std::iostream* child_in, user *owner);
+    process(const char*, const char* args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const char* args, std::iostream* child_out = 0);
+    process(const std::string&, const char* args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const std::string& args, std::iostream* child_out = 0);
+    process(const std::string&, const std::string& args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Initializes the command only.
     process(const std::string&);
     //! Initializes the command only.
     process(const char*);
     //! Create executable process from path
-    process(const path&, const char* args = 0, std::iostream* child_out = 0);
+    process(const path&, const char* args = 0);
 
     //! Deletes the object and possibly kills the process.
     ~process();
@@ -101,15 +100,9 @@ class process
     void operator+=(const std::string& arg) { arguments << ' ' << arg; }
 
     //! Forward content from given stream into process' stdin
-    void pipe_from(std::iostream* child_in) { stream_in = child_in; }
-    //! Pipes child stdout to given stream (file, stringstream or cout)
-    void pipe_to(std::iostream* child_out) { stream_out = child_out; }
-    //! Pipes child stderr to given stream (file, stringstream or cout)
-    void pipe_err(std::iostream* child_err) { stream_err = child_err; }
-    //! Disables piping from child's stderr and stdout all together.
-    void pipe_null() { stream_out = 0; stream_err = 0; }
+    void set_stdin(std::iostream* child_in) { stream_in = child_in; }
     //! Closes the send pipe to client.
-    void pipe_send_close()
+    void close_stdin()
     {
         if (pid && pipes)
             pipes->close_child_input();
@@ -119,6 +112,15 @@ class process
     void set_user(user*);
     //! Sets the daemon flag. Use only for attached processes.
     void set_daemon(bool enable) { daemon = enable; }
+    //! Set the timeout for this process overriding general timeout value.
+    void set_timeout(unsigned int to) { timeout = to; }
+    //! Enables or disables command echoing before execution.
+    void set_echo(bool e) { echo = e; }
+    //! Set explicit pipe buffer sizes for stdout and stderr.
+    void set_pipe_size(size_t s_out, size_t s_err) {
+        rb_out.reallocate(s_out);
+        rb_err.reallocate(s_err);
+    }
     //! Returns the pid for this process.
     int get_pid() { return pid; }
     //! Attaches this object to running process.
@@ -132,81 +134,64 @@ class process
       the process object. Normally one would wait untill it completes. If process is already
       running, calling this function will call stop first and then start new process.
     */
-    void start(const char* args = 0);
+    void start(const char* args=nullptr);
     //! Stops the process i.e. terminates it if it is sill running and closes files.
     void stop();
-    //! Waits for this process to end or untill the given timeout is expired.
-    int wait_for_exit(int timeOut);
 
     //! Executes command after _appending_ given argument to the current arguments.
-    int execa(const char* arg, int timeout = C4S_PROC_TIMEOUT);
-    //! Executes the command with optional arguments. Previous arguments are written over. Calls
-    //! start and waits for the exit.
-    int exec(const char* args = 0, int timeout = C4S_PROC_TIMEOUT);
-    //! Executes the command with optional arguments. Previous arguments are written over. Calls
-    //! start and waits for the exit.
-    int exec(const std::string&, int timeout = C4S_PROC_TIMEOUT);
-    //...
-    //! Runs the process appending given arguments and default timeout value (execa)
-    int operator()(const char* args, int timeout = C4S_PROC_TIMEOUT)
-    {
-        return execa(args, timeout);
-    }
-    //! Runs the process appending given arguments and default timeout value (execa)
-    int operator()(const std::string& args, int timeout = C4S_PROC_TIMEOUT)
-    {
-        return execa(args.c_str(), timeout);
-    }
-    //! Runs the process with optional timeout value (exec)
-    int operator()(int timeout = C4S_PROC_TIMEOUT) { return exec(0, timeout); }
-
+    int execa(const char* arg);
+    //! Runs the process overriding current arguments.
+    int operator()(const char* args=nullptr);
+    //! Runs the process overriding current arguments.
+    int operator()(const std::string& args);
     //! Checks if the process is still running.
     bool is_running();
+
     //! Returns true if command exists in the system.
     bool is_valid() { return !command.empty(); }
     //! Returns return value from last execution.
     int last_return_value() { return last_ret_val; }
-    //! Enables or disables command echoing before execution.
-    void set_echo(bool e) { echo = e; }
+    //! Returns number of seconds process ran at the last execution.
+    double duration() { return ((double) (proc_ended - proc_started)) / CLOCKS_PER_SEC; }
 
     //! Static function that returns an output from given command.
     static void catch_output(const char* cmd, const char* args, std::string& output);
-    //! Static function that appends parameters from one process to another.
-    static void append_from(const char* cmd, const char* args, process& target);
-    //! Static function to get current PID
-    static pid_t get_running_pid() { return getpid(); }
     //! Dumps the process name and arguments into given stream. Use for debugging.
     void dump(std::ostream&);
 
-    size_t get_bytes_out() { return bytes_out; }
-    size_t get_bytes_err() { return bytes_err; }
+    RingBuffer rb_out;
+    RingBuffer rb_err;
 
-    static bool no_run; // 1< If true then the command is simply echoed to stdout but not actually
-                        // run. i.e. dry run.
+    static bool no_run; // 1< If true then the command is simply echoed to stdout but not actually run. i.e. dry run.
     static bool nzrv_exception; //!< If true 'Non-Zero Return Value' causes exception.
+    static unsigned int general_timeout;
 
   protected:
     //! Initializes process member variables. Called by constructors.
     void init_member_vars();
+    //! Stops a deamon i.e. process started with another process object earlier.
     void stop_daemon();
+    //! Waits for the process to exit.
+    int wait_for_exit();
 
     path command;                //!< Full path to a command that should be executed.
     std::stringstream arguments; //!< Stream of process arguments. Must not contain variables.
 
     int interpret_process_status(int);
-    user* owner; //!< If defined, process will be executed with user's credentials.
+    int wait_with_stream(std::ostream* log=0);
+
+    user* owner;                //!< If defined, process will be executed with user's credentials.
     pid_t pid;
     int last_ret_val;
-    bool daemon; //!< If true then the process is to be run as daemon and should not be terminated
-                 //!< at class dest
-    std::iostream* stream_out; //!< Stream for process stdout
-    std::iostream* stream_err; //!< Stream for process stderr
-    std::iostream* stream_in; //!< Pipe source i.e. process stdin
-    path stdin_path;      //!< If defined and exists, files content will be used as input to process.
-    proc_pipes* pipes; //!< Pipe to child for input and output. Valid when child is running.
-    bool echo; //!< If true then the commands are echoed to stdout before starting them. Use for
-               //!< debugging.    
-    size_t bytes_out, bytes_err;
+    bool daemon;                //!< If true then the process is to be run as daemon and should not be terminated
+                                //!< at class dest
+    std::iostream* stream_in;   //!< Data for client stdin
+    path stdin_path;            //!< If defined and exists, files content will be used as input to process.
+    proc_pipes* pipes;          //!< Pipe to child for input and output. Valid when child is running.
+    bool echo;                  //!< If true then the commands are echoed to stdout before starting them. Use for debugging.
+    unsigned int timeout;       //!< Number of seconds to wait before stopping the process.
+    clock_t proc_started;       //!< Clock time when process was started.
+    clock_t proc_ended;         //!< Clock time when process ended.
 };
 
 } // namespace c4s

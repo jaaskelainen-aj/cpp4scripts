@@ -2,7 +2,11 @@
 process.cpp
 This is a sample for Cpp4Scripting library.
 
-../makec4s --dev -s process.cpp
+g++ -x c++ -fno-rtti -I.. -Wall -pthread -O0 -ggdb -Wundef -Wno-unused-result\
+ -fcompare-debug-second -fexceptions -fuse-cxa-atexit\
+ -std=c++17 -o t_process t_process.cpp -lc4s -L../debug
+
+../makec4s --dev -s t_process.cpp
 ................................................................................
 License: LGPLv3
 Copyright (c) Menacon Ltd
@@ -11,6 +15,7 @@ Copyright (c) Menacon Ltd
 #include <string>
 #include <iostream>
 #include <stdexcept>
+#include <time.h>
 #include "../cpp4scripts.hpp"
 
 using namespace c4s;
@@ -20,25 +25,34 @@ using namespace std;
 
 void test1()
 {
-    // List all files in this directory using 'add-hock' process.
-#ifdef __linux
-    process("ls","-l",&cout)();
-#else
-    process("cmd","/C dir",&cout)();
-#endif
+    cout << "Run client, expect error code 10\n";
+    int rv = process("./client", "-e 10")();
+    if (rv != 10)
+        cout << "  Failed - rv = " << rv << '\n';
+    else
+        cout << "  OK\n";
 }
 
 void test2()
 {
-    ostringstream sout;
-    cout << "Running sample client\n";
-    process("./client", "hello world",&cout)();
-    cout << "Client done. Output:>>\n"<<sout.str()<<'\n';
+    cout << "Waiting client output for 30s:\n";
+    process ls("client","-w 3", PIPE::LG);
+    time_t now = time(0);
+    ls.start();
+    while(ls.is_running()){
+        while (ls.rb_out.read_line(cout))
+            cout << '\n';
+        if (time(0)-now > 30) {
+            ls.stop();
+            break;
+        }
+    }
+    cout << "  OK\n";
 }
 
+#if 0
 void test3()
 {
-#ifdef __linux
     user tu(args.get_value("-u").c_str());
     if(!tu.is_ok()) {
         cerr << "Unable to find user "<<tu.get_name()<<" from system\n";
@@ -56,9 +70,6 @@ void test3()
     touch.set_user(&tu);
     touch();
     cout << "Created file with user's name into /tmp\n";
-#else
-    cout << "Sorry, test3 does not work in this environment.\n";
-#endif
 }
 
 void test4()
@@ -100,7 +111,6 @@ void test6()
 
 void test7()
 {
-#ifdef __linux
     stringstream op;
     user postgres("postgres","postgres",true, "/home/postgres/","/bin/bash","sys");
     int status = postgres.status();
@@ -116,9 +126,6 @@ void test7()
     if(pg(30))
         cout << "PgSQL command failed.\n";
     cout << op.str()<<'\n';
-#else
-    cout << "Sorry, this test is only for Linux\n";
-#endif
 }
 
 // ..........................................................................................
@@ -157,27 +164,38 @@ void test9()
 void test10()
 {
     process echo;
-    echo.pipe_to(&cout);
     echo = "./echo";
     echo += "hello";
-    echo("world");
-    echo("earth");
+    echo("world", &cout);
+    echo("earth", &cout);
     echo.exec("universe");
 }
+// -------------------------------------------------------------------------------------------------
+void test11()
+{
+    RingBuffer rb;
+    string line;
+    process big("./child","-big");
+    for (big.start(); bit.is_running(&rb); ) {
+        rb.read_line(cout);
+    }
+}
+#endif
 // -------------------------------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
     TestItem tests[] = {
-        { &test1, "List all files in this directory using ls or cmd command."},
-        { &test2, "Use 7z to archive all *.cpp files in current directory"},
-        { &test3, "Create [user].tmp file into current directory by running touch as VALUE user."},
-        { &test4, "Run test client with several parameters. Testing parameter parsing."},
-        { &test5, "Run test client with couple of simple params. Pipe to stdout."},
-        { &test6, "Test the use of execa - running same process with varied arguments."},
-        { &test7, "Test the use of process user (linux only)"},
-        { &test8, "Test the input stream with echo-client."},
-        { &test9, "Terminate process with pid file (-pf)"},
-        { &test10, "Empty constructor, add command, add parameters"},
+        { &test1, "Get return value from command"},
+        { &test2, "List files with ls."},
+        // { &test3, "Create [user].tmp file into current directory by running touch as VALUE user."},
+        // { &test4, "Run test client with several parameters. Testing parameter parsing."},
+        // { &test5, "Run test client with couple of simple params. Pipe to stdout."},
+        // { &test6, "Test the use of execa - running same process with varied arguments."},
+        // { &test7, "Test the use of process user (linux only)"},
+        // { &test8, "Test the input stream with echo-client."},
+        // { &test9, "Terminate process with pid file (-pf)"},
+        // { &test10, "Empty constructor, add command, add parameters"},
+        // { &test11, "Read big data from client and push it to cout."},
         { 0, 0}
     };
 

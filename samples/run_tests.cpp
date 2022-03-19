@@ -15,10 +15,13 @@ struct TestItem {
 };
 
 program_arguments args;
+ofstream c4slog;
 
 int run_tests(int argc, char **argv, TestItem *tests)
 {
 	int ndx;
+
+	c4slog.open("unit_test.log");
 
     args += argument("-t", true,  "Sets VALUE as the test to run.");
     args += argument("-a", false, "Runs all tests");
@@ -60,7 +63,7 @@ int run_tests(int argc, char **argv, TestItem *tests)
 	    	}
 	    }
     } catch(const runtime_error& re) {
-        cerr << "Unit test failure: " << re.what() << endl;
+        c4slog << "Unit test failure: " << re.what() << endl;
         return 1;
     }
     cout << ">> test completed.\n";

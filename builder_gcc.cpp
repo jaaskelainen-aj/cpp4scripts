@@ -114,7 +114,7 @@ builder_gcc::build()
                 *log << "Compiling " << src.get_base() << '\n';
                 *log << "Compile parameters: " << single.str() << '\n';
             }
-            int rv = compiler.exec(vars.expand(single.str()), 20);
+            int rv = compiler(vars.expand(single.str()));
             return  rv ? BUILD_STATUS::ERROR : BUILD_STATUS::OK; 
         } catch (const c4s_exception& ce) {
             if (log)

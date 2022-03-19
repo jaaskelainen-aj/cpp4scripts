@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "config.hpp"
 #include "exception.hpp"
@@ -25,6 +26,7 @@
 #include "compiled_file.hpp"
 #include "variables.hpp"
 #include "program_arguments.hpp"
+#include "RingBuffer.hpp"
 #include "process.hpp"
 #include "util.hpp"
 
@@ -66,8 +68,6 @@ proc_pipes::proc_pipes()
     fcntl(fd_out[0], F_SETFL, fflag | O_NONBLOCK);
     fflag = fcntl(fd_err[0], F_GETFL, 0);
     fcntl(fd_err[0], F_SETFL, fflag | O_NONBLOCK);
-    br_out = 0;
-    br_err = 0;
     br_in = 0;
     send_ctrlZ = false;
 }
@@ -148,18 +148,13 @@ proc_pipes::init_parent()
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stdout(iostream* pout)
+proc_pipes::read_child_stdout(RingBuffer* rbuf)
 {
-    static char out_buffer[MAX_PIPE_BUFFER];
-    ssize_t rsize = read(fd_out[0], out_buffer, MAX_PIPE_BUFFER);
-    if (rsize > 0 && pout) {
-        pout->write(out_buffer, rsize);
-        pout->flush();
-        br_out += rsize;
+    size_t rsize = rbuf->write_from(fd_out[0]);
 #ifdef C4S_DEBUGTRACE
-        cerr << "proc_pipes::read_child_stdout - Wrote " << cnt << " bytes\n";
+    if (rsize > 0)
+        c4slog << "proc_pipes::read_child_stdout - Wrote " << rsize << " bytes\n";
 #endif
-    }
     return rsize > 0 ? true : false;
 }
 // -------------------------------------------------------------------------------------------------
@@ -168,18 +163,13 @@ proc_pipes::read_child_stdout(iostream* pout)
   \param pout Stream for the output
 */
 bool
-proc_pipes::read_child_stderr(iostream* perr)
+proc_pipes::read_child_stderr(RingBuffer* rbuf)
 {
-    static char out_buffer[MAX_PIPE_BUFFER];
-    ssize_t rsize = read(fd_err[0], out_buffer, MAX_PIPE_BUFFER);
-    if (rsize > 0 && perr) {
-        perr->write(out_buffer, rsize);
-        perr->flush();
-        br_err += rsize;
+    size_t rsize = rbuf->write_from(fd_err[0]);
 #ifdef C4S_DEBUGTRACE
-        cerr << "proc_pipes::read_child_stderr - Wrote " << cnt << " bytes\n";
+    if (rsize > 0)
+        c4slog << "proc_pipes::read_child_stderr - Wrote " << rsize << " bytes\n";
 #endif
-    }
     return rsize > 0 ? true : false;
 }
 // -------------------------------------------------------------------------------------------------
@@ -203,7 +193,7 @@ proc_pipes::write_child_input(std::iostream* input)
         }
     } while (ss > 0 && input->good());
 #ifdef C4S_DEBUGTRACE
-    cerr << "proc_pipes::write_child_input - Wrote " << cnt << " bytes to child stdin\n";
+    c4slog << "proc_pipes::write_child_input - Wrote " << cnt << " bytes to child stdin\n";
 #endif
     close_child_input();
     return cnt;
@@ -212,8 +202,9 @@ proc_pipes::write_child_input(std::iostream* input)
 // -------------------------------------------------------------------------------------------------
 // ###############################  PROCESS ########################################################
 // -------------------------------------------------------------------------------------------------
-bool c4s::process::no_run = false;
-bool c4s::process::nzrv_exception = false; //!< If true 'Non-Zero Return Value' causes exception.
+bool process::no_run = false;
+bool process::nzrv_exception = false; //!< If true 'Non-Zero Return Value' causes exception.
+unsigned int process::general_timeout = 0;
 
 // -------------------------------------------------------------------------------------------------
 /*! Common initialize code for all constructors. Constructors call this function first.
@@ -223,44 +214,26 @@ process::init_member_vars()
 {
     pid = 0;
     last_ret_val = 0;
-    stream_out = 0;
-    stream_err = 0;
     stream_in = 0;
     pipes = 0;
     echo = false;
     owner = 0;
     daemon = false;
-    bytes_out = 0;
-    bytes_err = 0;
+    timeout = general_timeout;
 }
 
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
+  \param _owner = User account that should be used to run the process.
 */
-process::process(const char* cmd, const char* args)
+process::process(const char* cmd, const char* args, PIPE pipe, user* _owner) :
+    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
 {
     init_member_vars();
     set_command(cmd);
     if (args)
         set_args(args);
-}
-
-// -------------------------------------------------------------------------------------------------
-/*! \param cmd Command to execute.
-  \param args Arguments to pass to the executable.
-  \param child_out Process output is sent to this stream.
-  \param child_in Data from this stream is written to process stdin.
-  \param _owner = User account that should be used to run the process.
- */
-process::process(const char* cmd, const char* args, iostream* child_out, iostream* child_in, user* _owner)
-{
-    init_member_vars();
-    set_command(cmd);
-    if (args)
-        arguments << args;
-    stream_out = child_out;
-    stream_in = child_in;
     if (_owner && _owner->status() > 0) {
         throw process_exception("process::process - Invalid process owner.");
         owner = _owner;
@@ -270,37 +243,44 @@ process::process(const char* cmd, const char* args, iostream* child_out, iostrea
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
-  \param child_out Process output is sent to this stream.
+  \param _owner = User account that should be used to run the process.
 */
-process::process(const string& cmd, const char* args, iostream* child_out)
+process::process(const string& cmd, const char* args, PIPE pipe, user* _owner):
+    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
 {
     init_member_vars();
     set_command(cmd.c_str());
     if (args)
         arguments << args;
-    if (child_out)
-        stream_out = child_out;
+    if (_owner && _owner->status() > 0) {
+        throw process_exception("process::process - Invalid process owner.");
+        owner = _owner;
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
   \param args Arguments to pass to the executable.
-  \param child_out Process output is sent to this stream.
+  \param _owner = User account that should be used to run the process.
 */
-process::process(const string& cmd, const string& args, iostream* child_out)
+process::process(const string& cmd, const string& args, PIPE pipe, user* _owner):
+    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
 {
     init_member_vars();
     set_command(cmd.c_str());
     if (!args.empty())
         arguments << args;
-    if (child_out)
-        stream_out = child_out;
+    if (_owner && _owner->status() > 0) {
+        throw process_exception("process::process - Invalid process owner.");
+        owner = _owner;
+    }
 }
 
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Name of the command to execute. No arguments should be specified with command.
  */
-process::process(const string& cmd)
+process::process(const string& cmd) :
+    rb_out(0), rb_err(0)
 {
     init_member_vars();
     set_command(cmd.c_str());
@@ -308,17 +288,19 @@ process::process(const string& cmd)
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Name of the command to execute. No arguments should be specified with command.
  */
-process::process(const char* cmd)
+process::process(const char* cmd):
+    rb_out(0), rb_err(0)
 {
     init_member_vars();
     set_command(cmd);
 }
 // -------------------------------------------------------------------------------------------------
-/*! \param cmd Name of the command to execute. No arguments should be specified with command.
+/*! \param cmd Name of the command to execute.
  *  \param args Arguments to pass to the executable.
  *  \param child_out Process output is sent to this stream.
 */
-process::process(const path& bin, const char* args, std::iostream* out)
+process::process(const path& bin, const char* args):
+    rb_out(0), rb_err(0)
 {
     struct stat sbuf;
     init_member_vars();
@@ -336,8 +318,6 @@ process::process(const path& bin, const char* args, std::iostream* out)
     }
     if (args)
         arguments << args;
-    if (out)
-        stream_out = out;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -347,7 +327,7 @@ process::process(const path& bin, const char* args, std::iostream* out)
 process::~process()
 {
 #ifdef C4S_DEBUGTRACE
-    cerr << "process::~process - name=" << command.get_base() << '\n';
+    c4slog << "process::~process - name=" << command.get_base() << '\n';
 #endif
     if (pid && !daemon)
         stop();
@@ -373,7 +353,7 @@ process::set_command(const char* cmd)
     // Check the user provided path first. This includes current directory.
     if (stat(command.get_path().c_str(), &sbuf) == -1 ||
         !has_anybits(sbuf.st_mode, S_IXUSR | S_IXGRP | S_IXOTH)) {
-        // cerr << "DEBUG - set_command:"<<command.get_path()<<";
+        // c4slog << "DEBUG - set_command:"<<command.get_path()<<";
         // st_mode="<<hex<<sbuf.st_mode<<dec<<'\n';
         if (!command.exists_in_env_path("PATH", true)) {
             ostringstream ss;
@@ -392,10 +372,16 @@ void
 process::operator=(const process& source)
 {
     command = source.command;
+    pid = 0;
     arguments.str("");
     arguments << source.arguments.str();
-    pid = 0;
-    stream_out = source.stream_out;
+    timeout = source.timeout;
+    if (source.owner)
+        owner = source.owner;
+    if (source.rb_out.max_size())
+        rb_out.reallocate(source.rb_out.max_size());
+    if (source.rb_err.max_size())
+        rb_err.reallocate(source.rb_err.max_size());
     daemon = source.daemon;
 }
 // ### \TODO continue to improve documentation from here on down.
@@ -404,7 +390,7 @@ void
 process::dump(ostream& os)
 {
     const char* pe = echo ? "true" : "false";
-    const char* pt = stream_out ? "OK" : "None";
+    const char* pt = rb_out.max_size() ? "OK" : "None";
     os << "Process - " << command.get_path() << "(";
     os << arguments.str();
     os << ");\n   PID=" << pid << "; echo=" << pe << "; LRV=" << last_ret_val << "; stdout=" << pt
@@ -423,7 +409,6 @@ process::start(const char* args)
 
     if (command.empty())
         throw process_exception("process::start - Unable to start process. No command specified.");
-
     if (pid)
         stop();
     if (args) {
@@ -499,14 +484,11 @@ process::start(const char* args)
         arg_ptr[ptr_count - 1] = 0;
 
 #ifdef C4S_DEBUGTRACE
-    cerr << "process::start - " << command.get_path() << '(' << tmp_cmdbuf << "):\n";
+    c4slog << "process::start - " << command.get_path() << '(' << tmp_cmdbuf << "):\n";
     for (int i = 0; arg_ptr[i]; i++)
-        cerr << " [" << i << "] " << arg_ptr[i] << '\n';
-    cerr << "process::start - About to fork, pipe=";
-    if (stream_out)
-        cerr << "enabled";
-    else
-        cerr << "disabled";
+        c4slog << " [" << i << "] " << arg_ptr[i] << '\n';
+    c4slog << " About to fork from parent: " <<getpid() << '\n';
+    c4slog << " rb_out="<<rb_out.max_size()<<"; rb_err="<<rb_err.max_size() << '\n';;
 #else
     if (echo) {
         cerr << command.get_base() << '(';
@@ -524,10 +506,12 @@ process::start(const char* args)
     pipes = new proc_pipes();
 
     // Create the child process i.e. fork
+    proc_started = clock();
+    proc_ended = proc_started;
     pid = fork();
     if (!pid) {
 #ifdef C4S_DEBUGTRACE
-        cerr << "process::start - created child: " << getpid() << endl;
+        c4slog << "process::start - created child: " << getpid() << endl;
 #endif
         pipes->init_child();
         delete pipes;
@@ -609,12 +593,10 @@ process::attach(const path& pid_file)
     }
 }
 // -------------------------------------------------------------------------------------------------
-/*! If the timeout expires the process_exception is trown.
-  \param timeout Number of seconds to wait.
-  \retval int Return value from the process.
+/*! \retval int Return value from the process. Value is -99 on wait or timeout error.
 */
 int
-process::wait_for_exit(int timeout)
+process::wait_for_exit()
 {
     if (!pid)
         return last_ret_val;
@@ -622,62 +604,23 @@ process::wait_for_exit(int timeout)
         last_ret_val = 0;
         return 0;
     }
+
 #ifdef C4S_DEBUGTRACE
-    cerr << "process::wait_for_exit - name=" << command.get_base() << ", pid=" << pid
-         << ", timeout=" << timeout;
-    if (stream_out)
-        cerr << ", stream_out";
-    if (stream_err)
-        cerr << ', stream_err';
-    cerr << '\n';
-#endif
     time_t beg = time(0);
-    int status;
-    int counter = timeout * 10;
-    struct timespec ts_delay, ts_remain;
-    ts_delay.tv_sec = 0;
-    ts_delay.tv_nsec = 100000000L;
-    pid_t wait_val;
-    do {
-        nanosleep(&ts_delay, &ts_remain);
-        if (stream_err)
-            pipes->read_child_stderr(stream_err);
-        if (stream_out)
-            pipes->read_child_stdout(stream_out);
-        wait_val = waitpid(pid, &status, WNOHANG);
-        if (wait_val && wait_val != pid) {
-            ostringstream os;
-            os << "process::wait_for_exit - name=" << command.get_base()
-               << ", wait error: " << strerror(errno);
-            throw process_exception(os.str());
-        }
-        counter--;
-    } while (!wait_val && counter > 0);
-    if (counter) {
-        bool out_data = stream_out ? true : false;
-        bool err_data = stream_err ? true : false;
-        while (time(0) - beg < timeout && (out_data || err_data)) {
-            if (err_data)
-                err_data = pipes->read_child_stderr(stream_err);
-            if (out_data)
-                out_data = pipes->read_child_stdout(stream_out);
-        }
-    }
-    last_ret_val = interpret_process_status(status);
-#ifdef C4S_DEBUGTRACE
-    cerr << "process::wait_for_exit - name=" << command.get_base() << ", status:" << status
-         << ", last_ret_val:" << last_ret_val;
-    cerr << ", counter:" << counter << ", seconds:" << time(0) - beg;
-    cerr << ", br_out:" << pipes->get_br_out() << ", br_err:" << pipes->get_br_err() << '\n';
-#else
-    bytes_err = pipes->get_br_err();
-    bytes_out = pipes->get_br_out();
+    c4slog << "process::wait_for_exit - name=" << command.get_base()
+        << ", pid=" << pid
+        << ", timeout=" << timeout << '\n';
 #endif
-    if (counter <= 0) {
-        ostringstream os;
-        os << "process::wait_for_exit - name=" << command.get_base() << ", pid=" << pid
-           << "; Timeout!";
-        throw process_timeout(os.str());
+    // We catch timeout and wait errors
+    try {
+        while (is_running()) {
+            // Intentionally empty
+        }
+    } catch (const process_exception& pe) {
+#ifdef C4S_DEBUGTRACE
+        c4slog << "process::wait_for_exit - error: " << pe.what() << '\n';
+#endif
+        return -99;
     }
     pid = 0;
     stop();
@@ -691,55 +634,6 @@ process::wait_for_exit(int timeout)
 }
 // -------------------------------------------------------------------------------------------------
 /*!
-  Executes process with additional argument. Given argument is not stored permanently.
-  Returns when the process is completed or timeout exeeded.
-  \param args Additional argument to append to current set.
-  \param timeout Number of seconds to wait. Defaults to C4S_PROC_TIMEOUT.
-  \retval int Return value from the command.
-*/
-int
-process::execa(const char* plus, int timeout)
-{
-    streampos end = arguments.tellp();
-    arguments << ' ' << plus;
-    start();
-    int rv = wait_for_exit(timeout);
-    arguments.seekp(end);
-    return rv;
-}
-
-// -------------------------------------------------------------------------------------------------
-/*!
-  Returns when the process is completed or
-  timeout exeeded. This is a shorthand for start-wait_for_exit combination.
-  \param timeout Number of seconds to wait for the process completion.
-  \param args Optional arguments for the command. Overrides previously entered arguments if
-  specified. \retval int Return value from the command.
-*/
-int
-process::exec(const char* args, int timeout)
-{
-    start(args);
-    return wait_for_exit(timeout);
-}
-
-// -------------------------------------------------------------------------------------------------
-/*!
-  Executes the command with optional arguments. Returns when the process is completed or
-  timeout exeeded. This is a shorthand for start-wait_for_exit combination.
-  \param timeout Number of seconds to wait for the process completion.
-  \param args Arguments for the command. Overrides existing arguments.
-  \retval int Return value from the command.
-*/
-int
-process::exec(const string& args, int timeout)
-{
-    start(args.c_str());
-    return wait_for_exit(timeout);
-}
-
-// -------------------------------------------------------------------------------------------------
-/*!
    \retval bool True if it is, false if not.
 */
 bool
@@ -747,27 +641,118 @@ process::is_running()
 {
     if (!pid)
         return false;
-    if (kill(pid, 0) == 0)
+    // Take a little nap
+    struct timespec ts_delay, ts_remain;
+    ts_delay.tv_sec = 0;
+    ts_delay.tv_nsec = 100000000L;
+    nanosleep(&ts_delay, &ts_remain);
+    // Check for timeout
+    if (proc_started && timeout) {
+        proc_ended = clock();
+        if (timeout < duration()) {
+            stop();
+            ostringstream es;
+            es << "process::is_running - " << command.get_base()
+                << "; timeout " << timeout;
+            throw process_exception(es.str());
+        }
+    }
+    // Read the pipes
+    bool serr_out = false;
+    bool sout_out = false;
+    if (rb_err.max_size())
+        serr_out = pipes->read_child_stderr(&rb_err);
+    if (rb_out.max_size())
+        sout_out = pipes->read_child_stdout(&rb_out);
+    if (serr_out || sout_out) {
+#ifdef C4S_DEBUGTRACE
+        c4slog << "process::is_running - data read for: " << command.get_base() << '\n';
+#endif
         return true;
+    }
+    // Are we still running
+    int status;
+    pid_t wait_val = waitpid(pid, &status, WNOHANG);
+    if (!wait_val) {
+#ifdef C4S_DEBUGTRACE
+        c4slog << "process::is_running - waiting for: " << command.get_base() << '\n';
+#endif
+        return true;
+    }
+    if (wait_val && wait_val != pid) {
+        ostringstream os;
+        os << "process::is_running - name=" << command.get_base()
+           << ", wait error: " << strerror(errno);
+        throw process_exception(os.str());
+    }
+    // We are done, close up.
+    last_ret_val = interpret_process_status(status);
     pid = 0;
+#ifdef C4S_DEBUGTRACE
+    c4slog << "process::is_running - stopping: " << command.get_base()
+        << "; retval: "<< last_ret_val << '\n';
+#endif
     stop();
     return false;
 }
+// -------------------------------------------------------------------------------------------------
+/*!
+  Executes process with additional argument. Given argument is not stored permanently.
+  Returns when the process is completed or timeout exeeded.
+  \param args Additional argument to append to current set.
+  \param timeout Number of seconds to wait. Defaults to C4S_PROC_TIMEOUT.
+  \retval int Return value from the command.
+*/
+int
+process::execa(const char* plus)
+{
+    streampos end = arguments.tellp();
+    arguments << ' ' << plus;
+    start();
+    int rv = wait_for_exit();
+    arguments.seekp(end);
+    return rv;
+}
 
+// -------------------------------------------------------------------------------------------------
+/*! Returns when the process is completed or timeout exeeded. This is a shorthand for
+  start-wait_for_exit combination.
+  \param args Optional arguments for the command. Overrides previously entered arguments if specified.
+  \retval int Return value from the command.
+*/
+int
+process::operator()(const char* args)
+{
+    start(args);
+    return wait_for_exit();
+}
+
+// -------------------------------------------------------------------------------------------------
+/*! Returns when the process is completed or timeout exeeded. This is a shorthand for
+  start-wait_for_exit combination.
+  \param args Optional arguments for the command. Overrides previously entered arguments if specified.
+  \retval int Return value from the command.
+*/
+int
+process::operator()(const string& args)
+{
+    start(args.c_str());
+    return wait_for_exit();
+}
 // -------------------------------------------------------------------------------------------------
 void
 process::stop_daemon()
 {
     ostringstream os;
 #ifdef C4S_DEBUGTRACE
-    cerr << "process::stop_daemon - name=" << command.get_base() << '\n';
+    c4slog << "process::stop_daemon - name=" << command.get_base() << '\n';
 #endif
     if (!pid)
         return;
     // Send termination signal.
     if (kill(pid, SIGTERM)) {
 #ifdef C4S_DEBUGTRACE
-        cerr << "process::stop: kill(pid,SIGTERM) error:" << strerror(errno) << '\n';
+        c4slog << "process::stop: kill(pid,SIGTERM) error:" << strerror(errno) << '\n';
 #else
         os << "process::stop: kill(pid,SIGTERM) error:" << strerror(errno) << '\n';
 #endif
@@ -783,9 +768,14 @@ process::stop_daemon()
         rv = kill(pid, 0);
         count--;
     } while (count > 0 && rv == 0);
+    if (proc_started)
+        proc_ended = clock();
 #ifdef C4S_DEBUGTRACE
-    cerr << "process::stop_daemon - term result:" << rv << "; count=" << count
-         << "; errno=" << errno << '\n';
+    c4slog << "process::stop_daemon - term result:" << rv
+        << "; count=" << count
+        << "; errno=" << errno
+        << "; runtime=" << duration()
+        << '\n';
 #endif
     if (count == 0) {
         count = 10;
@@ -796,7 +786,7 @@ process::stop_daemon()
             count--;
         } while (count > 0 && rv == 0);
 #ifdef C4S_DEBUGTRACE
-        cerr << "process::stop_daemon - kill result:" << rv << "; count=" << count
+        c4slog << "process::stop_daemon - kill result:" << rv << "; count=" << count
              << "; errno=" << errno << '\n';
 #endif
         if (count == 0)
@@ -804,7 +794,7 @@ process::stop_daemon()
     }
     if (errno != ESRCH) {
 #ifdef C4S_DEBUGTRACE
-        cerr << "process::stop_daemon - error stopping daemon\n";
+        c4slog << "process::stop_daemon - error stopping daemon\n";
 #endif
         throw process_exception("process::stop_daemon - error stopping daemon");
     }
@@ -832,9 +822,12 @@ process::interpret_process_status(int status)
 void
 process::stop()
 {
-#ifdef C4S_DEBUGTRACE
-    cerr << "process::stop - name=" << command.get_base() << '\n';
-#endif
+    if (pipes) {
+        if (rb_err.max_size())
+            pipes->read_child_stderr(&rb_err);
+        if (rb_out.max_size())
+            pipes->read_child_stdout(&rb_out);
+    }
     if (pid) {
         if (daemon) {
             stop_daemon();
@@ -858,12 +851,12 @@ process::stop()
                 }
             }
 #ifdef C4S_DEBUGTRACE
-            cerr << "Process::stop - used TERM/KILL to stop " << pid << ".\n";
+            c4slog << "Process::stop - used TERM/KILL to stop " << pid << ".\n";
 #endif
         }
         if (cid == -1) {
 #ifdef C4S_DEBUGTRACE
-            cerr << "process::stop - name=" << command.get_base()
+            c4slog << "process::stop - name=" << command.get_base()
                  << ", waitpid failed. Errno=" << errno << '\n';
 #endif
             if (errno == EINTR)
@@ -881,15 +874,18 @@ process::stop()
         pid = 0;
     } // if(pid)
 
+    proc_ended = clock();
+#ifdef C4S_DEBUGTRACE
+    c4slog << "process::stop - name=" << command.get_base()
+        << "; runtime= " << duration() << '\n';
+#endif
     if (pipes) {
         delete pipes;
         pipes = 0;
     }
 }
-
 // -------------------------------------------------------------------------------------------------
 /*!  Possible errors with command will throw an exception.
-
   \param cmd Command to run.
   \param args Command arguments.
   \param output Buffer where the output will be stored into.
@@ -897,40 +893,14 @@ process::stop()
 void
 process::catch_output(const char* cmd, const char* args, string& output)
 {
-    stringstream os;
-    process source(cmd, args);
-    source.pipe_to(&os);
+    process source(cmd, args, PIPE::SM);
     int rv = source();
+    source.rb_out.read_into(output);
     if (rv) {
-        ostringstream err;
-        err << "process::catch-output - command returned error " << rv;
-        err << ". Output: " << os.str();
-        throw process_exception(err.str());
+        ostringstream oss;
+        oss << "process::catch-output - command returned error " << rv;
+        throw process_exception(oss.str());
     }
-    output = os.str();
-}
-
-// -------------------------------------------------------------------------------------------------
-/*! Possible errors with command will throw an exception. \see catch_output
-
-  \param cmd Command to run.
-  \param args Command arguments.
-  \param target Process where the output will be appended to.
-*/
-void
-process::append_from(const char* cmd, const char* args, process& target)
-{
-    stringstream os;
-    process source(cmd, args);
-    source.pipe_to(&os);
-    int rv = source();
-    if (rv) {
-        ostringstream err;
-        err << "process::append_from - command returned error " << rv;
-        err << ". Output: " << os.str();
-        throw process_exception(err.str());
-    }
-    target += os.str();
 }
 
 } // namespace c4s

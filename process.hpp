@@ -144,6 +144,8 @@ class process
     int operator()(const char* args=nullptr);
     //! Runs the process overriding current arguments.
     int operator()(const std::string& args);
+    //! Runs the process echoing output to named stream, usually stdout/cout.
+    int operator()(std::ostream&);
     //! Checks if the process is still running.
     bool is_running();
 

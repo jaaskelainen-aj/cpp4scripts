@@ -52,6 +52,9 @@
 using namespace std;
 using namespace c4s;
 
+#ifdef C4S_DEBUGTRACE
+std::ofstream c4slog;
+#endif
 program_arguments args;
 
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
@@ -75,7 +78,6 @@ documentation()
     cout << "OK\n";
     return 0;
 }
-
 // -------------------------------------------------------------------------------------------------
 int
 build(ostream* log)
@@ -134,19 +136,18 @@ build(ostream* log)
     }
     delete make;
 
-#if 0
     cout << "\nBuilding makec4s\n";
     path_list plmkc4s;
     plmkc4s += path("makec4s.cpp");
 
     builder* make2 = new builder_gcc(&plmkc4s, "makec4s", log);
     make2->set(BUILD::BIN);
-    make2->add(debug ? BUILD::DEB : BUILD::REL);
+    make2->add(args.is_set("-deb") ? BUILD::DEB : BUILD::REL);
     if (args.is_set("-V"))
         make2->add(BUILD::VERBOSE);
     make2->add_comp("-fno-rtti");
     make2->add_link("-lc4s");
-    make2->add_link(debug ? " -Ldebug" : " -Lrelease");
+    make2->add_link(args.is_set("-deb") ? " -Ldebug" : " -Lrelease");
     if (builder::is_fail_status(make2->build()) ) {
         cout << "\nBuild failed.\n";
         delete make2;
@@ -154,7 +155,6 @@ build(ostream* log)
     } else
         cout << "Compilation ready.\n";
     delete make2;
-#endif
     return 0;
 }
 // -------------------------------------------------------------------------------------------------
@@ -275,6 +275,9 @@ install()
 int
 main(int argc, char** argv)
 {
+#ifdef C4S_DEBUGTRACE
+    c4slog.open("build_debug.log");
+#endif
     args += argument("-deb", false, "Create debug version of library.");
     args += argument("-rel", false, "Create release version of library.");
     args += argument("-export", true, "Export project files [ccdb|cmake]");

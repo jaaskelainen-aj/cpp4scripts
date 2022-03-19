@@ -24,7 +24,6 @@ void RingBuffer::initialize(size_t max)
 {
     rb_max = max;
     if (!rb_max) {
-        eof = true;
         rb = nullptr;
     } else {
         eof = false;
@@ -35,6 +34,7 @@ void RingBuffer::initialize(size_t max)
 
     reptr = rb;
     wrptr = rb;
+    eof = false;
     end = wrptr + rb_max;
 }
 
@@ -186,6 +186,8 @@ size_t
 RingBuffer::read_line(std::ostream& output)
 {
     last_read = 0;
+    if (!rb)
+        return 0;
     while ((reptr != wrptr || eof) && *reptr != '\n') {
         output.put(*reptr);
         reptr++;

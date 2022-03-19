@@ -24,7 +24,6 @@ ofstream c4slog;
 
 int main(int argc, char **argv)
 {
-    args += argument("-s",  false, "Read stdin every enter-press. Enter S to stop.");
     args += argument("-uid",false, "Put user and group id into log.");
     args += argument("-w",  true,  "Outputs a line of text every <VALUE> seconds until Ctrl-c");
     args += argument("-e",  true,  "Return error code 10.");

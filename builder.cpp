@@ -30,7 +30,6 @@ namespace c4s {
     \param _sources List of source files to compile.
     \param _name Name of the target binary
     \param _log If specified, will receive compiler output.
-    \param _flags Combination of build flags
 */
 builder::builder(path_list* _sources, const char* _name, ostream* _log)
   : log(_log)
@@ -46,7 +45,6 @@ builder::builder(path_list* _sources, const char* _name, ostream* _log)
     of the project.
     \param _name Name of the target binary
     \param _log If specified, will receive compiler output.
-    \param _flags Combination of build flags
 */
 builder::builder(const char* _name, ostream* _log)
   : log(_log)
@@ -181,7 +179,7 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
     if (!sources)
         throw c4s_exception("builder::compile - sources not defined!");
 
-    compiler.set_pipe_size(8192, 0);
+    compiler.set_pipe_size(0, 8192);
     compiler.set_timeout(timeout);
     string prepared(vars.expand(c_opts.str()));
     try {
@@ -200,8 +198,8 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
                     if (has_any(BUILD::VERBOSE))
                         *log << "  " << options.str() << '\n';
                     for (compiler.start(options.str().c_str()); compiler.is_running(); ) {
-                        while (compiler.rb_out.read_line(*log))
-                            *log << ".\n";
+                        while(compiler.rb_err.read_line(*log))
+                            *log << '\n';
                     }
                 } else {
                     compiler(options.str().c_str());
@@ -281,8 +279,10 @@ builder::link(const char* out_ext, const char* out_arg)
         int rv = 0;
         if (log) {
             linker.set_args(options.str());
-            for (linker.start(); linker.is_running(); )
-                linker.rb_out.read_line(*log);
+            for (linker.start(); linker.is_running(); ) {
+                while(linker.rb_err.read_line(*log))
+                    *log << '\n';
+            }
             rv = linker.last_return_value();
         } else
             rv = linker(options.str());

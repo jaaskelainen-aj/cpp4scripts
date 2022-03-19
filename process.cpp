@@ -504,6 +504,10 @@ process::start(const char* args)
     if (pipes)
         delete pipes;
     pipes = new proc_pipes();
+    if (rb_err.max_size())
+        rb_err.clear();
+    if (rb_out.max_size())
+        rb_out.clear();
 
     // Create the child process i.e. fork
     proc_started = clock();
@@ -606,7 +610,6 @@ process::wait_for_exit()
     }
 
 #ifdef C4S_DEBUGTRACE
-    time_t beg = time(0);
     c4slog << "process::wait_for_exit - name=" << command.get_base()
         << ", pid=" << pid
         << ", timeout=" << timeout << '\n';
@@ -726,10 +729,9 @@ process::operator()(const char* args)
     start(args);
     return wait_for_exit();
 }
-
 // -------------------------------------------------------------------------------------------------
 /*! Returns when the process is completed or timeout exeeded. This is a shorthand for
-  start-wait_for_exit combination.
+  start-is_running combination.
   \param args Optional arguments for the command. Overrides previously entered arguments if specified.
   \retval int Return value from the command.
 */
@@ -739,6 +741,16 @@ process::operator()(const string& args)
     start(args.c_str());
     return wait_for_exit();
 }
+int
+process::operator()(std::ostream& os)
+{
+    for(start(); is_running(); ) {
+        while(rb_out.read_line(os))
+            os << '\n';
+    }
+    return last_ret_val;
+}
+
 // -------------------------------------------------------------------------------------------------
 void
 process::stop_daemon()

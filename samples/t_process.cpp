@@ -50,7 +50,6 @@ void test2()
     cout << "  OK\n";
 }
 
-#if 0
 void test3()
 {
     user tu(args.get_value("-u").c_str());
@@ -59,16 +58,11 @@ void test3()
         return;
     }
     cout << "Found user: "<<tu.get_name()<<" ("<<tu.get_uid()<<") / "<<tu.get_group()<<" ("<<tu.get_gid()<<")\n";
-    process client("./client");
-    client.set_user(&tu);
-    client.pipe_to(&cout);
-    client();
+
     string param("/tmp/");
     param += tu.get_name();
     param += ".tmp";
-    process touch("touch", param); //
-    touch.set_user(&tu);
-    touch();
+    touch("touch", param, PIPE::NONE, &tu)();
     cout << "Created file with user's name into /tmp\n";
 }
 
@@ -83,20 +77,13 @@ void test4()
     // Arg 6 : [on]
     // Arg 7 : [fire]
     //               | samis\' \'  'world for peace' "one's heart".. 'dude\'s pants' on fire |
-    process("client"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ",&cout)();
-    // Arg 0 : [-c]
-    // Arg 1 : [\du admins]
-    //               |-c "\du admins"|
-    process("client","-c \"\\du admins\"",&cout)();
+    process("echo"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ")();
 }
 
 void test5()
 {
-    path space("C:\\Program Files\\hellow.exe");
-    string para(space.get_path_quot());
-    para += " cheese";
-    process client("client",para.c_str(),&cout);
-    client();
+    // Test the stdout shorthand
+    process("ls", "-l", PIPE::SM)(cout);
 }
 
 void test6()
@@ -187,9 +174,9 @@ int main(int argc, char **argv)
     TestItem tests[] = {
         { &test1, "Get return value from command"},
         { &test2, "List files with ls."},
-        // { &test3, "Create [user].tmp file into current directory by running touch as VALUE user."},
-        // { &test4, "Run test client with several parameters. Testing parameter parsing."},
-        // { &test5, "Run test client with couple of simple params. Pipe to stdout."},
+        { &test3, "Create [user].tmp file into current directory by running touch as VALUE user."},
+        { &test4, "Run test client with several parameters. Testing parameter parsing."},
+        { &test5, "Run test client with couple of simple params. Pipe to stdout."},
         // { &test6, "Test the use of execa - running same process with varied arguments."},
         // { &test7, "Test the use of process user (linux only)"},
         // { &test8, "Test the input stream with echo-client."},

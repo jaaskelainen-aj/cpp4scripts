@@ -134,7 +134,7 @@ class builder : public BUILD
     c4s::process linker;       //!< Linker process for this builder.
     std::ostringstream c_opts; //!< List of options for the compiler.
     std::ostringstream l_opts; //!< List of options for the linker.
-    std::ostream* log;         //!< If not null, will receive compiler and linker output.
+    std::ostream* log;         //!< If not null, will receive compiler and linker output (stderr)
     c4s::path_list* sources;   //!< List of source files. Relative paths are possible.
     c4s::path_list extra_obj;  //!< Optional additional object files to be included at link step.
     std::string name;          //!< Simple target name.

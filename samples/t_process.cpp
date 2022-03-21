@@ -62,7 +62,7 @@ void test3()
     string param("/tmp/");
     param += tu.get_name();
     param += ".tmp";
-    touch("touch", param, PIPE::NONE, &tu)();
+    process("touch", param, PIPE::NONE, &tu)();
     cout << "Created file with user's name into /tmp\n";
 }
 
@@ -79,20 +79,20 @@ void test4()
     //               | samis\' \'  'world for peace' "one's heart".. 'dude\'s pants' on fire |
     process("echo"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ")();
 }
-
 void test5()
 {
     // Test the stdout shorthand
     process("ls", "-l", PIPE::SM)(cout);
 }
-
+#if 0
 void test6()
 {
     const char *parts[]={"part-1", "part-2", "part-3", 0 };
-    process client("client","client call",&cout);
+    process client("client","client call", PIPE::SM);
     for(const char **cur=parts; *cur; cur++) {
         cout << "------------------------------\n";
         client.execa(*cur);
+        client.rb_out.read_into(cout);
     }
 }
 

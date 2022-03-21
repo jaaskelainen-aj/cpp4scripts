@@ -37,7 +37,12 @@ builder::builder(path_list* _sources, const char* _name, ostream* _log)
 {
     sources = _sources;
     my_sources = false;
-    timeout = 30;
+    if (_log) {
+        compiler.set_pipe_size(0, 8192);
+        linker.set_pipe_size(0, 8192);
+    }
+    compiler.set_timeout(BUILDER_TIMEOUT);
+    linker.set_timeout(BUILDER_TIMEOUT);
 }
 // -------------------------------------------------------------------------------------------------
 /** builder base class constructor.
@@ -50,7 +55,6 @@ builder::builder(const char* _name, ostream* _log)
   : log(_log)
   , name(_name)
 {
-    timeout = 20;
     try {
         sources = new path_list();
         my_sources = true;
@@ -66,6 +70,12 @@ builder::builder(const char* _name, ostream* _log)
         if (_log)
             *_log << "Unable to read source list from git: " << ce.what() << '\n';
     }
+    if (_log) {
+        compiler.set_pipe_size(0, 8192);
+        linker.set_pipe_size(0, 8192);
+    }
+    compiler.set_timeout(BUILDER_TIMEOUT);
+    linker.set_timeout(BUILDER_TIMEOUT);
 }
 // -------------------------------------------------------------------------------------------------
 builder::~builder()
@@ -179,8 +189,6 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
     if (!sources)
         throw c4s_exception("builder::compile - sources not defined!");
 
-    compiler.set_pipe_size(0, 8192);
-    compiler.set_timeout(timeout);
     string prepared(vars.expand(c_opts.str()));
     try {
         if (logging)
@@ -198,8 +206,7 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
                     if (has_any(BUILD::VERBOSE))
                         *log << "  " << options.str() << '\n';
                     for (compiler.start(options.str().c_str()); compiler.is_running(); ) {
-                        while(compiler.rb_err.read_line(*log))
-                            *log << '\n';
+                        compiler.rb_err.read_into(*log);
                     }
                 } else {
                     compiler(options.str().c_str());
@@ -242,9 +249,6 @@ builder::link(const char* out_ext, const char* out_arg)
         throw c4s_exception("builder::link - sources not defined!");
     if (!out_ext)
         throw c4s_exception("builder::link - link file extenstion missing. Unable to link.");
-    if (log)
-        linker.rb_out.reallocate(8192);
-    linker.set_timeout(3 * timeout);
     path_list linkFiles(*sources, build_dir + C4S_DSEP, out_ext);
     try {
         if (log && has_any(BUILD::VERBOSE))
@@ -280,8 +284,7 @@ builder::link(const char* out_ext, const char* out_arg)
         if (log) {
             linker.set_args(options.str());
             for (linker.start(); linker.is_running(); ) {
-                while(linker.rb_err.read_line(*log))
-                    *log << '\n';
+                linker.rb_err.read_into(*log);
             }
             rv = linker.last_return_value();
         } else

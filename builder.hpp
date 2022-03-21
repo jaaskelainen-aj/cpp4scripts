@@ -88,12 +88,6 @@ class builder : public BUILD
     path get_target_path() { return path(build_dir, target); }
     //! Returns generated build directory name. Note: name does not have dir-separator at the end.
     std::string get_build_dir() { return build_dir; }
-    //! Sets the timeout value to other than default 15s
-    void set_timeout(int to)
-    {
-        if (to > 0 && to < 300)
-            timeout = to;
-    }
 
     //! Generates compiler_commands.json.
     void export_compiler_commands(c4s::path& exp, const c4s::path& src);
@@ -141,7 +135,6 @@ class builder : public BUILD
     std::string target;        //!< Decorated and final target name.
     std::string build_dir;     //!< Generated build directory name. No dir-separater at the end.
     std::string ccdb_root;     //!< Root directory for compiler_commands.json generation.
-    int timeout;               //!< Number of seconds to wait before build and link commands fail.
     bool my_sources;           //!< If true builder has allocated the sources list.
     c4s::path current_obj;     //!< Path of the file currently being compiled.
 };

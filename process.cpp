@@ -745,8 +745,7 @@ int
 process::operator()(std::ostream& os)
 {
     for(start(); is_running(); ) {
-        while(rb_out.read_line(os))
-            os << '\n';
+        rb_out.read_into(os);
     }
     return last_ret_val;
 }

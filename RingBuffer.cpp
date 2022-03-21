@@ -37,14 +37,12 @@ void RingBuffer::initialize(size_t max)
     eof = false;
     end = wrptr + rb_max;
 }
-
 // -------------------------------------------------------------------------------------------------
 RingBuffer::~RingBuffer()
 {
     if (rb)
         delete[] rb;
 }
-
 // -------------------------------------------------------------------------------------------------
 void RingBuffer::reallocate(size_t max)
 {
@@ -52,7 +50,6 @@ void RingBuffer::reallocate(size_t max)
         delete[] rb;
     initialize(max);
 }
-
 // -------------------------------------------------------------------------------------------------
 size_t
 RingBuffer::write(const void* input, size_t slen)
@@ -82,32 +79,40 @@ RingBuffer::write(const void* input, size_t slen)
 size_t
 RingBuffer::write_from(int fd)
 {
+    ssize_t fd_bytes1 = 0;
+    ssize_t fd_bytes2 = 0;
     if (eof || !fd)
         return 0;
-    size_t fp = end - wrptr;
-    ssize_t bytes2 = 0;
-    ssize_t bytes = ::read(fd, wrptr, fp);
-    if (bytes < 0) {
-        if (errno == EAGAIN)
-            return 0;
-        goto write_from_err;
-    }
-    if ((size_t)bytes < fp) {
-        wrptr += bytes;
+    if (wrptr >= reptr) {
+        fd_bytes1 = ::read(fd, wrptr, end - wrptr);
+        if (fd_bytes1 < 0) {
+            if (errno == EAGAIN)
+                return 0;
+            goto write_from_err;
+        }
+        wrptr += fd_bytes1;
         if (wrptr == end)
             wrptr = rb;
-    } else {
-        bytes2 = ::read(fd, rb, reptr-rb);
-        if (bytes2 > 0)
-            wrptr += bytes2;
-        else if (bytes2 <0 && errno != EAGAIN)
-            goto write_from_err;
+        if (wrptr == reptr) {
+            eof = true;
+            return fd_bytes1;
+        }
     }
-    if (wrptr == reptr)
-        eof = true;
-    return (size_t)(bytes+bytes2);
+    if (wrptr < reptr) {
+        fd_bytes2 = ::read(fd, wrptr, reptr - wrptr);
+        if (fd_bytes2 < 0) {
+            if (errno == EAGAIN)
+                return 0;
+            goto write_from_err;
+        }
+        wrptr += fd_bytes2;
+        if (wrptr == reptr) {
+            eof = true;
+        }
+    }
+    return (size_t)(fd_bytes1 + fd_bytes2);
 
-write_from_err:
+ write_from_err:
     char emsg[100];
     sprintf(emsg, "RingBuffer::write_from - read pipe %d failed with err %d", fd, errno);
     throw std::runtime_error(emsg);
@@ -183,11 +188,21 @@ RingBuffer::read_into(std::ostream& output)
 }
 // -------------------------------------------------------------------------------------------------
 size_t
-RingBuffer::read_line(std::ostream& output)
+RingBuffer::read_line(std::ostream& output, bool partial_ok)
 {
     last_read = 0;
     if (!rb)
         return 0;
+    if (!partial_ok) {
+        char* check = reptr;
+        while (check != wrptr && *check != '\n') {
+            check++;
+            if (check == end)
+                check = rb;
+        }
+        if (*check != '\n')
+            return 0;
+    }
     while ((reptr != wrptr || eof) && *reptr != '\n') {
         output.put(*reptr);
         reptr++;

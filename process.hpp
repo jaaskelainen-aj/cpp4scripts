@@ -135,6 +135,11 @@ class process
       running, calling this function will call stop first and then start new process.
     */
     void start(const char* args=nullptr);
+    void start(const std::string &opts) {
+        arguments.str("");
+        arguments << opts;
+        start(nullptr);
+    }
     //! Stops the process i.e. terminates it if it is sill running and closes files.
     void stop();
 

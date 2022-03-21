@@ -147,7 +147,7 @@ build(ostream* log)
         make2->add(BUILD::VERBOSE);
     make2->add_comp("-fno-rtti");
     make2->add_link("-lc4s");
-    make2->add_link(args.is_set("-deb") ? " -Ldebug" : " -Lrelease");
+    make2->add_link(args.is_set("-deb") ? " -L./debug" : " -L./release");
     if (builder::is_fail_status(make2->build()) ) {
         cout << "\nBuild failed.\n";
         delete make2;

@@ -38,7 +38,7 @@ class RingBuffer
     size_t read_into(std::ostream&);
     size_t read_into(int fd, size_t len);
     size_t read_line(std::ostream&, bool partial_ok = false);
-    size_t read_line(char* line, size_t len);
+    size_t read_line(char* line, size_t len, bool partial_ok = false);
     size_t read_max(void*, size_t, size_t, bool);
     size_t peek(void*, size_t);
 
@@ -70,6 +70,7 @@ class RingBuffer
     void initialize(size_t);
     size_t size_internal() const;
     size_t capacity_internal() const;
+    bool is_line_available() const;
 
     size_t rb_max, last_read;
     char* rb;

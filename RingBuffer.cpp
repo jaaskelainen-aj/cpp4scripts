@@ -193,16 +193,8 @@ RingBuffer::read_line(std::ostream& output, bool partial_ok)
     last_read = 0;
     if (!rb)
         return 0;
-    if (!partial_ok) {
-        char* check = reptr;
-        while (check != wrptr && *check != '\n') {
-            check++;
-            if (check == end)
-                check = rb;
-        }
-        if (*check != '\n')
-            return 0;
-    }
+    if (!partial_ok && !is_line_available())
+        return 0;
     while ((reptr != wrptr || eof) && *reptr != '\n') {
         output.put(*reptr);
         reptr++;
@@ -218,12 +210,26 @@ RingBuffer::read_line(std::ostream& output, bool partial_ok)
     }
     return last_read;
 }
-// -------------------------------------------------------------------------------------------------
+bool
+RingBuffer::is_line_available() const
+{
+    char* check = reptr;
+    while (check != wrptr && *check != '\n') {
+        check++;
+        if (check == end)
+            check = rb;
+    }
+    if (*check != '\n')
+        return false;
+    return true;
+}
 size_t
-RingBuffer::read_line(char* line, size_t len)
+RingBuffer::read_line(char* line, size_t len, bool partial_ok)
 {
     last_read = 0;
     if (!rb)
+        return 0;
+    if (!partial_ok && !is_line_available())
         return 0;
     while ((reptr != wrptr || eof) && *reptr != '\n' && last_read < len) {
         *line = *reptr;
@@ -234,14 +240,13 @@ RingBuffer::read_line(char* line, size_t len)
             reptr = rb;
         eof = false;
     }
-    if (*reptr == '\n') {
+    if (reptr != wrptr && *reptr == '\n') {
         reptr++;
         if (reptr == end)
             reptr = rb;
     }
     return last_read;
 }
-
 // -------------------------------------------------------------------------------------------------
 size_t
 RingBuffer::read_into(int fd, size_t slen)

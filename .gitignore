@@ -5,4 +5,4 @@ build
 makec4s
 cpp4scripts.sublime-workspace
 remote-build.sh
-t_*
+*_T

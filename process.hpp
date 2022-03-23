@@ -162,7 +162,7 @@ class process
     double duration() { return ((double) (proc_ended - proc_started)) / CLOCKS_PER_SEC; }
 
     //! Static function that returns an output from given command.
-    static void catch_output(const char* cmd, const char* args, std::string& output);
+    static int catch_output(const char* cmd, const char* args, std::string& output);
     //! Dumps the process name and arguments into given stream. Use for debugging.
     void dump(std::ostream&);
 

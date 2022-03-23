@@ -33,7 +33,10 @@ class RingBuffer
 
     size_t write(const void*, size_t);
     size_t write_from(int fd);
-    size_t read(void*, size_t);
+    //! Read binary data.
+    size_t read_data(void*, size_t);
+    //! Read character string.
+    size_t read(char*, size_t);
     size_t read_into(std::string&);
     size_t read_into(std::ostream&);
     size_t read_into(int fd, size_t len);

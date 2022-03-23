@@ -597,7 +597,7 @@ process::attach(const path& pid_file)
     }
 }
 // -------------------------------------------------------------------------------------------------
-/*! \retval int Return value from the process. Value is -99 on wait or timeout error.
+/*! \retval int Return value from the process.
 */
 int
 process::wait_for_exit()
@@ -614,16 +614,8 @@ process::wait_for_exit()
         << ", pid=" << pid
         << ", timeout=" << timeout << '\n';
 #endif
-    // We catch timeout and wait errors
-    try {
-        while (is_running()) {
-            // Intentionally empty
-        }
-    } catch (const process_exception& pe) {
-#ifdef C4S_DEBUGTRACE
-        c4slog << "process::wait_for_exit - error: " << pe.what() << '\n';
-#endif
-        return -99;
+    while (is_running()) {
+        // Intentionally empty
     }
     pid = 0;
     stop();
@@ -677,9 +669,9 @@ process::is_running()
     int status;
     pid_t wait_val = waitpid(pid, &status, WNOHANG);
     if (!wait_val) {
-#ifdef C4S_DEBUGTRACE
-        c4slog << "process::is_running - waiting for: " << command.get_base() << '\n';
-#endif
+// #ifdef C4S_DEBUGTRACE
+//         c4slog << "process::is_running - waiting for: " << command.get_base() << '\n';
+//#endif
         return true;
     }
     if (wait_val && wait_val != pid) {
@@ -703,7 +695,6 @@ process::is_running()
   Executes process with additional argument. Given argument is not stored permanently.
   Returns when the process is completed or timeout exeeded.
   \param args Additional argument to append to current set.
-  \param timeout Number of seconds to wait. Defaults to C4S_PROC_TIMEOUT.
   \retval int Return value from the command.
 */
 int
@@ -896,22 +887,22 @@ process::stop()
     }
 }
 // -------------------------------------------------------------------------------------------------
-/*!  Possible errors with command will throw an exception.
-  \param cmd Command to run.
+/*! \param cmd Command to run.
   \param args Command arguments.
   \param output Buffer where the output will be stored into.
 */
-void
+int
 process::catch_output(const char* cmd, const char* args, string& output)
 {
     process source(cmd, args, PIPE::SM);
     int rv = source();
     source.rb_out.read_into(output);
-    if (rv) {
+    if (rv && nzrv_exception) {
         ostringstream oss;
         oss << "process::catch-output - command returned error " << rv;
         throw process_exception(oss.str());
     }
+    return rv;
 }
 
 } // namespace c4s

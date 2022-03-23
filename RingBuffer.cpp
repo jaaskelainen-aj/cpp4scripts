@@ -120,7 +120,7 @@ RingBuffer::write_from(int fd)
 }
 // -------------------------------------------------------------------------------------------------
 size_t
-RingBuffer::read(void* store, size_t slen)
+RingBuffer::read_data(void* store, size_t slen)
 {
     if (!slen || !store || !rb) {
         return 0;
@@ -146,6 +146,17 @@ RingBuffer::read(void* store, size_t slen)
     eof = false;
     last_read = slen;
     return slen;
+}
+/*! String will be null terminated. I.e. actual amount of data read is slen-1.
+ * \param str       target string.
+ * \param slen      target buffer size = sizeof(target)
+ */
+size_t
+RingBuffer::read(char* str, size_t slen)
+{
+    size_t rb = read_data(str, slen-1);
+    str[rb] = 0;
+    return rb;
 }
 // -------------------------------------------------------------------------------------------------
 size_t
@@ -283,10 +294,10 @@ RingBuffer::read_max(void* store, size_t store_size, size_t max, bool partial)
     if (!rb)
         return 0;
     if (store_size >= max)
-        return read(store, max);
+        return read_data(store, max);
     size_t br = 0;
     if (partial)
-        br = read(store, store_size);
+        br = read_data(store, store_size);
     discard(max - br);
     return br;
 }

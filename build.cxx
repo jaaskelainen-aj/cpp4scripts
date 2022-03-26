@@ -82,7 +82,7 @@ documentation()
 int
 build(ostream* log)
 {
-    if (args.is_set("-u") && builder::update_build_no("version.hpp"))
+    if (args.is_set("-deb") && builder::update_build_no("version.hpp"))
         cout << "Warning: Unable to update build number.\n";
 
     path_list cppFiles(cpp_list, ' ');

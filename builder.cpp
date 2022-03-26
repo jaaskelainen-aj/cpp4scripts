@@ -46,7 +46,7 @@ builder::builder(path_list* _sources, const char* _name, ostream* _log)
 }
 // -------------------------------------------------------------------------------------------------
 /** builder base class constructor.
-    Files are automatically read from git filelist. Files with cpp-extension are considered part of
+    Files are automatically read from 'git ls-files' command. Files with cpp-extension are considered part of
     of the project.
     \param _name Name of the target binary
     \param _log If specified, will receive compiler output.
@@ -59,7 +59,7 @@ builder::builder(const char* _name, ostream* _log)
         sources = new path_list();
         my_sources = true;
         char gitline[255];
-        process git("git", "ls-files");
+        process git("git", "ls-files", PIPE::LG);
         for (git.start(); git.is_running(); ) {
             while (git.rb_out.read_line(gitline, sizeof(gitline)) ) {
                 if (strstr(gitline, ".cpp"))

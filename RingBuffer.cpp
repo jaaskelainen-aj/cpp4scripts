@@ -238,10 +238,11 @@ size_t
 RingBuffer::read_line(char* line, size_t len, bool partial_ok)
 {
     last_read = 0;
-    if (!rb)
+    if (!rb || len < 2)
         return 0;
     if (!partial_ok && !is_line_available())
         return 0;
+    len--; // Save room for null byte.
     while ((reptr != wrptr || eof) && *reptr != '\n' && last_read < len) {
         *line = *reptr;
         line++;
@@ -256,6 +257,8 @@ RingBuffer::read_line(char* line, size_t len, bool partial_ok)
         if (reptr == end)
             reptr = rb;
     }
+    if (last_read)
+        *line = 0;
     return last_read;
 }
 // -------------------------------------------------------------------------------------------------

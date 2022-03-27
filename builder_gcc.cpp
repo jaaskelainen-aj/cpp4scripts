@@ -110,12 +110,17 @@ builder_gcc::build()
         single << "-o " << target << ' ' << src.get_base() << ' ';
         single << l_opts.str();
         try {
-            if (log && has_any(BUILD::VERBOSE)) {
-                *log << "Compiling " << src.get_base() << '\n';
-                *log << "Compile parameters: " << single.str() << '\n';
-            }
-            int rv = compiler.exec(vars.expand(single.str()), 20);
-            return  rv ? BUILD_STATUS::ERROR : BUILD_STATUS::OK; 
+            if (log) {
+                if (has_any(BUILD::VERBOSE)) {
+                    *log << "Compiling " << src.get_base() << '\n';
+                    *log << "Compile parameters: " << single.str() << '\n';
+                }
+                for (compiler.start(vars.expand(single.str())); compiler.is_running(); ) {
+                    compiler.rb_err.read_into(*log);
+                }
+            } else
+                compiler.start(vars.expand(single.str()));
+            return  compiler.last_return_value() ? BUILD_STATUS::ERROR : BUILD_STATUS::OK;
         } catch (const c4s_exception& ce) {
             if (log)
                 *log << "builder_gcc::build - Failed:" << ce.what() << '\n';

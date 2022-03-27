@@ -60,7 +60,6 @@ main(int argc, char** argv)
 {
     bool debug = false;
     bool verbose = false;
-    int timeout = 15;
 
     // Set arguments and initialize them.
     args += argument("-s", true, "Sets VALUE as a source file to be compiled.");
@@ -68,12 +67,9 @@ main(int argc, char** argv)
     args += argument("-rel", false, "Create release version (default).");
     args += argument("-def", false, "Print the default compiler argumens to stdout.");
     args += argument("-new", true, "Make a new c4s-template file with VALUE as the name.");
-    args += argument("-c4s", true,
-                     "Path where Cpp4Scripts is installed. If not defined, then $C4S is tried and "
-                     "then '/usr/local/'");
+    args += argument("-c4s", true, "Path where Cpp4Scripts is installed. '/usr/local/cpp4scripts' is default");
     args += argument("-inc", true, "External include file to add to the build.");
     args += argument("-lib", true, "External library to add to the link command");
-    args += argument("-m", true, "Set the VALUE as timeout (seconds) for the compile.");
     args += argument("-hash", true, "Calculate FNV hash for named file.");
     args += argument("-t", false, "Enable C4S_DEBUGTRACE define for tracing the cpp4scripts code.");
     args += argument("-v", false, "Prints the version number.");
@@ -170,14 +166,7 @@ main(int argc, char** argv)
     if (verbose)
         cout << "Using " << src.get_path() << " as a source file.\n";
     sources += src;
-    if (args.is_set("-m")) {
-        timeout = strtol(args.get_value("-m").c_str(), 0, 10);
-        if (timeout == 0) {
-            cout
-                << "Warning: unable to recognize the compile process timeout. Using the default.\n";
-            timeout = 15;
-        }
-    }
+
     target = src.get_base_plain();
     builder* make = 0;
     try {
@@ -187,15 +176,16 @@ main(int argc, char** argv)
         make = new builder_gcc(&sources, target.c_str(), &cout);
         // Get C4S location
         string c4svar;
-        make->add_comp("-x c++ -fno-rtti");
+        make->add_comp("-x c++ -fno-rtti -fcompare-debug-second");
         if (args.is_set("--dev"))
             make->add_comp("-I..");
         else {
-            if (args.is_set("-c4s"))
-                make->set_variable("C4S", args.get_value("-c4s"));
-            else if (!get_env_var("C4S", c4svar))
-                make->set_variable("C4S", "/usr/local");
-            make->add_comp("-I$(C4S)/include/cpp4scripts");
+            if (args.is_set("-c4s")) {
+                string inc("-I");
+                inc += args.get_value("-c4s");
+                make->add_comp(inc);
+            }
+            else make->add_comp("-I/usr/local/include/cpp4scripts");
         }
         if (args.is_set("-t"))
             make->add_comp("-DC4S_DEBUGTRACE");
@@ -204,9 +194,9 @@ main(int argc, char** argv)
             make->add_link("-L../debug");
         else {
             if (debug)
-                make->add_link("-L$(C4S)/lib-d");
+                make->add_link("-L/usr/local/lib-d");
             else
-                make->add_link("-L$(C4S)/lib");
+                make->add_link("-L/usr/local/lib");
         }
         make->set(BUILD::BIN);
         make->set(debug ? BUILD::DEB : BUILD::REL);
@@ -216,7 +206,6 @@ main(int argc, char** argv)
             make->add_comp(args.get_value("-inc").c_str());
         if (args.is_set("-lib"))
             make->add_link(args.get_value("-lib").c_str());
-        make->set_timeout(timeout);
         if (builder::is_fail_status(make->build()) ) {
             cout << "Build failed.\n";
             delete make;

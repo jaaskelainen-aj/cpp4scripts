@@ -1,6 +1,11 @@
 /*******************************************************************************
 client.cpp
 Program to test the Cpp4Scripts process class
+
+g++ -x c++ -fno-rtti -I.. -Wall -pthread -O0 -ggdb -Wundef -Wno-unused-result\
+ -fcompare-debug-second -fexceptions -fuse-cxa-atexit\
+ -std=c++17 -o client client.cpp -lc4s -L../debug
+
 Copyright (c) Menacon Ltd
 *******************************************************************************/
 #include <iostream>
@@ -15,17 +20,34 @@ using namespace std;
 using namespace c4s;
 
 program_arguments args;
+ofstream c4slog;
 
 int main(int argc, char **argv)
 {
-    args += argument("-w",  false, "Waits for 5s before reading stdin");
     args += argument("-uid",false, "Put user and group id into log.");
+    args += argument("-w",  true,  "Outputs a line of text every <VALUE> seconds until Ctrl-c");
+    args += argument("-e",  true,  "Return error code 10.");
     try{
         args.initialize(argc,argv);
     }catch(const c4s_exception& re){
         cout << "Cpp4Scripts test client\n";
         args.usage();
         return 1;
+    }
+    if (args.is_set("-e")) {
+        return stoul(args.get_value("-e"));
+    }
+    if (args.is_set("-w")) {
+        int ndx = 1;
+        long tm = stoul(args.get_value("-w"));
+        cout << "Entring send loop with "<< tm <<"s interval.\n";
+        while(ndx<11) {
+            sleep(tm);
+            cout << "Sending line " << ndx << " through stdout" << endl;
+            // cerr << "Sending line " << ndx << " through stderr\n";
+            ndx++;
+        }
+        return 0;
     }
     ofstream log("client.log");
     if(!log) {
@@ -40,22 +62,12 @@ int main(int argc, char **argv)
         log << endl;
     }
     if(args.is_set("-w")) {
-        for(int n=0; n<5; n++) {
-            sleep(1);
-        }
-    }
-    ostringstream os;
-    if(c4s::wait_stdin(500)) {
-        log << "Detected stdin input. Reading untill EOF."<<endl;
-        char ch;
-        while(!feof(stdin)) {
-            if(fread(&ch,1,1,stdin)) {
-                log << ch;
-                os << ch;
-            }
-        }
-        log << "\n<< Done with input.\n"<<endl;
-        cout << os.str();
+        cout << "Waiting for letter <S>\n";
+        char c;
+        do {
+            cin >> c;
+            log << c;
+        } while (c != 'S');
     }
     return 0;
 }

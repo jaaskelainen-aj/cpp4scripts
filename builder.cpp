@@ -30,7 +30,6 @@ namespace c4s {
     \param _sources List of source files to compile.
     \param _name Name of the target binary
     \param _log If specified, will receive compiler output.
-    \param _flags Combination of build flags
 */
 builder::builder(path_list* _sources, const char* _name, ostream* _log)
   : log(_log)
@@ -38,47 +37,45 @@ builder::builder(path_list* _sources, const char* _name, ostream* _log)
 {
     sources = _sources;
     my_sources = false;
-    compiler.pipe_to(&build_log);
-    compiler.pipe_err(&build_log);
-    linker.pipe_to(&build_log);
-    linker.pipe_err(&build_log);
-    timeout = 30;
+    if (_log) {
+        compiler.set_pipe_size(0, 8192);
+        linker.set_pipe_size(0, 8192);
+    }
+    compiler.set_timeout(BUILDER_TIMEOUT);
+    linker.set_timeout(BUILDER_TIMEOUT);
 }
 // -------------------------------------------------------------------------------------------------
 /** builder base class constructor.
-    Files are automatically read from git filelist. Files with cpp-extension are considered part of
+    Files are automatically read from 'git ls-files' command. Files with cpp-extension are considered part of
     of the project.
     \param _name Name of the target binary
     \param _log If specified, will receive compiler output.
-    \param _flags Combination of build flags
 */
 builder::builder(const char* _name, ostream* _log)
   : log(_log)
   , name(_name)
 {
-    if (log) {
-        compiler.pipe_to(&build_log);
-        compiler.pipe_err(&build_log);
-        linker.pipe_to(&build_log);
-        linker.pipe_err(&build_log);
-    }
-    timeout = 20;
     try {
         sources = new path_list();
         my_sources = true;
-        char gitline[128];
-        stringstream gitfiles;
-        process("git", "ls-files", &gitfiles)(20);
-        do {
-            gitfiles.getline(gitline, sizeof(gitline));
-            // cout<<gitline<<'\n';
-            if (strstr(gitline, ".cpp"))
-                sources->add(path(gitline));
-        } while (!gitfiles.eof() && gitfiles.gcount() > 0);
+        char gitline[255];
+        process git("git", "ls-files", PIPE::LG);
+        for (git.start(); git.is_running(); ) {
+            while (git.rb_out.read_line(gitline, sizeof(gitline)) ) {
+                if (strstr(gitline, ".cpp"))
+                    sources->add(path(gitline));
+            }
+        }
     } catch (const c4s_exception& ce) {
         if (_log)
             *_log << "Unable to read source list from git: " << ce.what() << '\n';
     }
+    if (_log) {
+        compiler.set_pipe_size(0, 8192);
+        linker.set_pipe_size(0, 8192);
+    }
+    compiler.set_timeout(BUILDER_TIMEOUT);
+    linker.set_timeout(BUILDER_TIMEOUT);
 }
 // -------------------------------------------------------------------------------------------------
 builder::~builder()
@@ -187,7 +184,6 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
     ostringstream options;
     bool exec = false;
     bool logging = log && has_any(BUILD::VERBOSE);
-    time_t cs;
     string output_line;
 
     if (!sources)
@@ -206,27 +202,21 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
                 options << prepared;
                 options << ' ' << out_arg << current_obj.get_path();
                 options << ' ' << src->get_path();
-                if (log && has_any(BUILD::VERBOSE))
-                    *log << "  " << options.str() << '\n';
-                compiler.start(options.str().c_str());
-                exec = true;
-                cs = time(0);
-                while (compiler.is_running() && time(0)-cs < timeout) {
-                    if (log) {
-                        while (getline(build_log, output_line))
-                            *log << output_line;
+                if (log) {
+                    if (has_any(BUILD::VERBOSE))
+                        *log << "  " << options.str() << '\n';
+                    for (compiler.start(options.str().c_str()); compiler.is_running(); ) {
+                        compiler.rb_err.read_into(*log);
                     }
+                } else {
+                    compiler(options.str().c_str());
                 }
-                if (time(0)-cs >= timeout)
-                    return BUILD_STATUS::TIMEOUT;
+                exec = true;
                 if (compiler.last_return_value())
                     return BUILD_STATUS::ERROR;
             }
         }
         current_obj.clear();
-        if (compiler.is_running()) {
-            compiler.wait_for_exit(timeout);
-        }
         if (!exec) {
             if (has_any(BUILD::FORCELINK)) {
                 if (logging)
@@ -289,11 +279,16 @@ builder::link(const char* out_ext, const char* out_arg)
             options << ' ' << vars.expand(l_opts.str());
         if (log && has_any(BUILD::VERBOSE))
             *log << "Link options: " << options.str() << '\n';
-        int rv = linker.exec(options.str(), 3 * timeout);
+
+        int rv = 0;
         if (log) {
-            while (getline(build_log, output_line))
-                *log << output_line;
-        }
+            linker.set_args(options.str());
+            for (linker.start(); linker.is_running(); ) {
+                linker.rb_err.read_into(*log);
+            }
+            rv = linker.last_return_value();
+        } else
+            rv = linker(options.str());
         bs = rv ? BUILD_STATUS::ERROR : BUILD_STATUS::OK;
     } catch (const process_timeout &pt) { 
         if (log)

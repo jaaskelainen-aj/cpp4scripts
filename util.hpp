@@ -13,6 +13,12 @@
 #include <unordered_map>
 #include <stdint.h>
 
+#ifdef C4S_DEBUGTRACE
+//#pragma GCC warning c4slog is enabled
+#include <iostream>
+extern std::ofstream c4slog;
+#endif
+
 namespace c4s {
 
 // inline void cp(const char *from, const char *to) { path source(from); source.cp(to); }

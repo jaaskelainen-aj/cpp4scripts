@@ -370,12 +370,13 @@ c4s::user::create(bool append_groups)
     if (!group.empty() && gid == -1 &&
         (name.empty() || (name.empty() == false && name.compare(group)))) {
         elog << "Adding group " << group << ": ";
-        process groupadd("groupadd", "-f", &elog);
+        process groupadd("groupadd", "-f", PIPE::SM);
         if (system)
             groupadd += "--system";
         groupadd += group;
         if (groupadd()) {
             process::nzrv_exception = nzrv_restore;
+            groupadd.rb_out.read_into(elog);
             throw c4s_exception(elog.str());
         }
         // We must read back the created gid
@@ -420,9 +421,9 @@ c4s::user::create(bool append_groups)
             useradd += "-m";
 
         useradd += name;
-        useradd.pipe_to(&elog);
         if (useradd()) {
             process::nzrv_exception = nzrv_restore;
+            useradd.rb_out.read_into(elog);
             throw c4s_exception(elog.str());
         }
         process::nzrv_exception = nzrv_restore;
@@ -472,9 +473,9 @@ c4s::user::create(bool append_groups)
         usermod += home;
     }
     usermod += name;
-    usermod.pipe_to(&elog);
     if (usermod()) {
         process::nzrv_exception = nzrv_restore;
+        usermod.rb_out.read_into(elog);
         elog << "Error - Unable to change primary group for user:" << name;
         throw c4s_exception(elog.str());
     }

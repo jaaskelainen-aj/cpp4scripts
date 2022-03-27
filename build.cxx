@@ -37,9 +37,10 @@
 #include "path_list.cpp"
 #include "path_list.hpp"
 #include "process.cpp"
-#include "process.hpp"
+#include "process.hpp" // includes RingBuffer
 #include "program_arguments.cpp"
 #include "program_arguments.hpp"
+#include "RingBuffer.cpp"
 #include "user.cpp"
 #include "user.hpp"
 #include "util.cpp"
@@ -51,18 +52,22 @@
 using namespace std;
 using namespace c4s;
 
+#ifdef C4S_DEBUGTRACE
+std::ofstream c4slog;
+#endif
 program_arguments args;
 
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "program_arguments.cpp util.cpp variables.cpp "
-                       "settings.cpp process.cpp user.cpp builder_gcc.cpp";
+                       "settings.cpp process.cpp user.cpp builder_gcc.cpp "
+                       "RingBuffer.cpp";
 // -------------------------------------------------------------------------------------------------
 int
-documentation(ostream* log)
+documentation()
 {
     cout << "Creating documentation\n";
     try {
-        if (process("doxygen", "c4s-doxygen.dg", log)(10)) {
+        if (process("doxygen", "c4s-doxygen.dg")()) {
             cout << "Doxygen error.\n";
             return 1;
         }
@@ -73,20 +78,16 @@ documentation(ostream* log)
     cout << "OK\n";
     return 0;
 }
-
 // -------------------------------------------------------------------------------------------------
 int
 build(ostream* log)
 {
-    builder *make = 0, *make2 = 0;
-    bool debug = false;
-
-    if (args.is_set("-u") && builder::update_build_no("version.hpp"))
+    if (args.is_set("-deb") && builder::update_build_no("version.hpp"))
         cout << "Warning: Unable to update build number.\n";
 
     path_list cppFiles(cpp_list, ' ');
 
-    make = new builder_gcc(&cppFiles, "c4s", log);
+    builder* make = new builder_gcc(&cppFiles, "c4s", log);
     make->set(BUILD::LIB);
 
     if (!args.is_set("-deb") && !args.is_set("-rel")) {
@@ -98,7 +99,6 @@ build(ostream* log)
             return 2;
         }
         if (scheme == "YES") {
-            debug = true;
             make->add(BUILD::DEB);
         } else
             make->add(BUILD::REL);
@@ -110,7 +110,6 @@ build(ostream* log)
         if (args.is_set("-deb")) {
             if (args.is_set("-V"))
                 cout << "Setting debug-build.\n";
-            debug = true;
             make->add(BUILD::DEB);
         } else
             make->add(BUILD::REL);
@@ -122,7 +121,7 @@ build(ostream* log)
 
     cout << "Building library.\n";
     if (args.is_set("-t"))
-        make->add_comp("-DDEBUGTRACE");
+        make->add_comp("-DC4S_DEBUGTRACE");
     make->add_comp("-fno-rtti");
 
     if (!args.is_set("makec4s") && builder::is_fail_status(make->build()) )
@@ -135,28 +134,28 @@ build(ostream* log)
         make->export_prj(args.get_value("-export"), args.exe, args.exe);
         return 0;
     }
+    delete make;
 
     cout << "\nBuilding makec4s\n";
     path_list plmkc4s;
     plmkc4s += path("makec4s.cpp");
 
-    int rv = 0;
-    make2 = new builder_gcc(&plmkc4s, "makec4s", log);
+    builder* make2 = new builder_gcc(&plmkc4s, "makec4s", log);
     make2->set(BUILD::BIN);
-    make2->add(debug ? BUILD::DEB : BUILD::REL);
+    make2->add(args.is_set("-deb") ? BUILD::DEB : BUILD::REL);
     if (args.is_set("-V"))
         make2->add(BUILD::VERBOSE);
     make2->add_comp("-fno-rtti");
     make2->add_link("-lc4s");
-    make2->add_link(debug ? " -Ldebug" : " -Lrelease");
+    make2->add_link(args.is_set("-deb") ? " -L./debug" : " -L./release");
     if (builder::is_fail_status(make2->build()) ) {
         cout << "\nBuild failed.\n";
-        rv = 2;
+        delete make2;
+        return 2;
     } else
         cout << "Compilation ready.\n";
-    delete make;
     delete make2;
-    return rv;
+    return 0;
 }
 // -------------------------------------------------------------------------------------------------
 int
@@ -276,11 +275,13 @@ install()
 int
 main(int argc, char** argv)
 {
+#ifdef C4S_DEBUGTRACE
+    c4slog.open("build_debug.log");
+#endif
     args += argument("-deb", false, "Create debug version of library.");
     args += argument("-rel", false, "Create release version of library.");
     args += argument("-export", true, "Export project files [ccdb|cmake]");
-    args += argument("-t", false,
-                     "Add TRACE define into target build that enables lots of debug output.");
+    args += argument("-t", false, "Add C4S_DEBUGTRACE define into target build.");
     args += argument("-u", false, "Updates the build number (last part of version number).");
     args += argument("-CXX", false, "Reads the compiler name from CXX environment variable.");
     args += argument("-doc", false, "Create docbook documentation only.");
@@ -319,12 +320,11 @@ main(int argc, char** argv)
         cout << "Function failed: " << ce.what() << '\n';
         return 1;
     }
-    ostream* log = &cout;
     if (args.is_set("-doc"))
-        return documentation(log);
+        return documentation();
 
     try {
-        return build(log);
+        return build(&cout);
     } catch (const exception& ce) {
         cout << "Build failed: " << ce.what() << '\n';
         return 1;

@@ -740,6 +740,15 @@ process::operator()(std::ostream& os)
     }
     return last_ret_val;
 }
+int
+process::operator()(const std::string& args, std::ostream& os)
+{
+    start(args.c_str());
+    for(start(); is_running(); ) {
+        rb_out.read_into(os);
+    }
+    return last_ret_val;
+}
 
 // -------------------------------------------------------------------------------------------------
 void

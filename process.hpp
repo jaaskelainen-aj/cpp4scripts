@@ -56,7 +56,7 @@ class process
     //! Default constructor.
     process() { init_member_vars(); }
     //! Creates a new process object from command and its arguments.
-    process(const char*, const char* args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
+    process(const char*, const char* args=nullptr, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Creates a new process object from command and its arguments.
     process(const std::string&, const char* args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Creates a new process object from command and its arguments.
@@ -151,6 +151,8 @@ class process
     int operator()(const std::string& args);
     //! Runs the process echoing output to named stream, usually stdout/cout.
     int operator()(std::ostream&);
+    //! Runs process overriding arguments and sends output to given stream.
+    int operator()(const std::string& args, std::ostream&);
     //! Checks if the process is still running.
     bool is_running();
 

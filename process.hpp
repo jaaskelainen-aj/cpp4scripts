@@ -58,13 +58,9 @@ class process
     //! Creates a new process object from command and its arguments.
     process(const char*, const char* args=nullptr, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Creates a new process object from command and its arguments.
-    process(const std::string&, const char* args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
+    //-- process(const std::string&, const char* args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
     //! Creates a new process object from command and its arguments.
     process(const std::string&, const std::string& args, PIPE pipe=PIPE::NONE, user* owner=nullptr);
-    //! Initializes the command only.
-    process(const std::string&);
-    //! Initializes the command only.
-    process(const char*);
     //! Create executable process from path
     process(const path&, const char* args = 0);
 

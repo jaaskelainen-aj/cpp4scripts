@@ -234,8 +234,9 @@ process::process(const char* cmd, const char* args, PIPE pipe, user* _owner) :
     set_command(cmd);
     if (args)
         set_args(args);
-    if (_owner && _owner->status() > 0) {
-        throw process_exception("process::process - Invalid process owner.");
+    if (_owner) {
+        if (_owner->status() > 0)
+            throw process_exception("process::process - Invalid process owner.");
         owner = _owner;
     }
 }
@@ -245,18 +246,18 @@ process::process(const char* cmd, const char* args, PIPE pipe, user* _owner) :
   \param args Arguments to pass to the executable.
   \param _owner = User account that should be used to run the process.
 */
-process::process(const string& cmd, const char* args, PIPE pipe, user* _owner):
-    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
-{
-    init_member_vars();
-    set_command(cmd.c_str());
-    if (args)
-        arguments << args;
-    if (_owner && _owner->status() > 0) {
-        throw process_exception("process::process - Invalid process owner.");
-        owner = _owner;
-    }
-}
+// process::process(const string& cmd, const char* args, PIPE pipe, user* _owner):
+//     rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
+// {
+//     init_member_vars();
+//     set_command(cmd.c_str());
+//     if (args)
+//         arguments << args;
+//     if (_owner && _owner->status() > 0) {
+//         throw process_exception("process::process - Invalid process owner.");
+//         owner = _owner;
+//     }
+// }
 
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Command to execute.
@@ -276,24 +277,6 @@ process::process(const string& cmd, const string& args, PIPE pipe, user* _owner)
     }
 }
 
-// -------------------------------------------------------------------------------------------------
-/*! \param cmd Name of the command to execute. No arguments should be specified with command.
- */
-process::process(const string& cmd) :
-    rb_out(0), rb_err(0)
-{
-    init_member_vars();
-    set_command(cmd.c_str());
-}
-// -------------------------------------------------------------------------------------------------
-/*! \param cmd Name of the command to execute. No arguments should be specified with command.
- */
-process::process(const char* cmd):
-    rb_out(0), rb_err(0)
-{
-    init_member_vars();
-    set_command(cmd);
-}
 // -------------------------------------------------------------------------------------------------
 /*! \param cmd Name of the command to execute.
  *  \param args Arguments to pass to the executable.
@@ -524,7 +507,7 @@ process::start(const char* args)
                 setuid(owner->get_uid()) != 0) {
                 int er = errno;
                 cerr << "process::start - child-process: Unable to change process persona. User:"
-                     << owner->get_name() << ".\nError (" << er << ") ";
+                     << owner->get_name() << ".\nError (" << errno << ") ";
                 cerr << strerror(er) << '\n';
                 _exit(EXIT_FAILURE);
             }

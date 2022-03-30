@@ -297,7 +297,7 @@ get_ISO_date(DATETYPE dt)
 const char*
 get_build_type()
 {
-#ifdef _DEBUG
+#ifndef NDEBUG
 
 #if defined(_WIN64) || defined(__x86_64)
     return "64bit-Debug";

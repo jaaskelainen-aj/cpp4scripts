@@ -60,7 +60,7 @@ program_arguments args;
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "program_arguments.cpp util.cpp variables.cpp "
                        "settings.cpp process.cpp user.cpp builder_gcc.cpp "
-                       "RingBuffer.cpp";
+                       "RingBuffer.cpp ntbs.cpp";
 // -------------------------------------------------------------------------------------------------
 int
 documentation()
@@ -111,8 +111,10 @@ build(ostream* log)
             if (args.is_set("-V"))
                 cout << "Setting debug-build.\n";
             make->add(BUILD::DEB);
-        } else
+        } else {
             make->add(BUILD::REL);
+            make->add_comp("-DNDEBUG");
+        }
     }
     if (args.is_set("-V"))
         make->add(BUILD::VERBOSE);

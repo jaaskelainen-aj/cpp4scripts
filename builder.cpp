@@ -137,7 +137,7 @@ builder::add_link(const compiled_file& cf)
 bool
 builder::check_includes(const path& source, int rlevel)
 {
-#ifdef _DEBUG
+#ifndef NDEBUG
     if (log && has_any(BUILD::VERBOSE))
         *log << "check include at level "<<rlevel<<" :"<<source.get_base()<<'\n';
 #endif

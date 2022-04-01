@@ -44,7 +44,7 @@ RingBuffer::~RingBuffer()
         delete[] rb;
 }
 // -------------------------------------------------------------------------------------------------
-void RingBuffer::reallocate(size_t max)
+void RingBuffer::max_size(size_t max)
 {
     if (rb)
         delete[] rb;

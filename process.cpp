@@ -178,24 +178,18 @@ proc_pipes::read_child_stderr(RingBuffer* rbuf)
   \param input String to write.
 */
 size_t
-proc_pipes::write_child_input(std::iostream* input)
+proc_pipes::write_child_input(RingBuffer* rbuf)
 {
-    char buffer[1024];
     size_t cnt = 0, ss;
-    if (!input)
+    if (!rbuf || !fd_in[1])
         return 0;
     do {
-        input->read(buffer, sizeof(buffer));
-        ss = input->gcount();
-        if (ss > 0) {
-            write(fd_in[1], buffer, ss);
-            cnt += ss;
-        }
-    } while (ss > 0 && input->good());
+        ss = rbuf->read_into(fd_in[1], rbuf->size());
+        cnt += ss;
+    } while (ss > 0);
 #ifdef C4S_DEBUGTRACE
     c4slog << "proc_pipes::write_child_input - Wrote " << cnt << " bytes to child stdin\n";
 #endif
-    close_child_input();
     return cnt;
 }
 
@@ -362,9 +356,11 @@ process::operator=(const process& source)
     if (source.owner)
         owner = source.owner;
     if (source.rb_out.max_size())
-        rb_out.reallocate(source.rb_out.max_size());
+        rb_out.max_size(source.rb_out.max_size());
     if (source.rb_err.max_size())
-        rb_err.reallocate(source.rb_err.max_size());
+        rb_err.max_size(source.rb_err.max_size());
+    if (source.rb_in.max_size())
+        rb_in.max_size(source.rb_in.max_size());
     daemon = source.daemon;
 }
 // ### \TODO continue to improve documentation from here on down.
@@ -522,8 +518,8 @@ process::start(const char* args)
     if (dynamic_buffer)
         delete[] dynamic_buffer;
     // If child input file has been defined, feed it to child.
-    if (stream_in) {
-        pipes->write_child_input(stream_in);
+    if (rb_in.max_size()) {
+        pipes->write_child_input(&rb_in);
     }
 }
 // -------------------------------------------------------------------------------------------------

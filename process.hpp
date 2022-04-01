@@ -30,7 +30,7 @@ class proc_pipes
     void init_parent();
     bool read_child_stdout(RingBuffer*);
     bool read_child_stderr(RingBuffer*);
-    size_t write_child_input(std::iostream*);
+    size_t write_child_input(RingBuffer*);
     void close_child_input();
 
   protected:
@@ -96,10 +96,12 @@ class process
     void operator+=(const std::string& arg) { arguments << ' ' << arg; }
 
     //! Forward content from given stream into process' stdin
-    void set_stdin(std::iostream* child_in) { stream_in = child_in; }
+    void write_stdin() {
+        if (pipes && rb_in.max_size())
+            pipes->write_child_input(&rb_in);
+    }
     //! Closes the send pipe to client.
-    void close_stdin()
-    {
+    void close_stdin() {
         if (pid && pipes)
             pipes->close_child_input();
     }
@@ -113,9 +115,11 @@ class process
     //! Enables or disables command echoing before execution.
     void set_echo(bool e) { echo = e; }
     //! Set explicit pipe buffer sizes for stdout and stderr.
-    void set_pipe_size(size_t s_out, size_t s_err) {
-        rb_out.reallocate(s_out);
-        rb_err.reallocate(s_err);
+    void set_pipe_size(size_t s_out, size_t s_err, size_t s_in=0) {
+        rb_out.max_size(s_out);
+        rb_err.max_size(s_err);
+        if (s_in)
+            rb_in.max_size(s_in);
     }
     //! Returns the pid for this process.
     int get_pid() { return pid; }
@@ -166,6 +170,7 @@ class process
 
     RingBuffer rb_out;
     RingBuffer rb_err;
+    RingBuffer rb_in;
 
     static bool no_run; // 1< If true then the command is simply echoed to stdout but not actually run. i.e. dry run.
     static bool nzrv_exception; //!< If true 'Non-Zero Return Value' causes exception.

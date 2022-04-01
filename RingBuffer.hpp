@@ -58,6 +58,7 @@ class RingBuffer
     size_t copy(RingBuffer&, size_t);
     size_t push_to(RBCallBack*, size_t);
     size_t max_size() const { return rb_max; }
+    void max_size(size_t);
 
     enum EXP_TYPE
     {
@@ -66,7 +67,6 @@ class RingBuffer
     };
     size_t exp_as_text(std::ostream&, size_t, EXP_TYPE);
     size_t discard(size_t);
-    void reallocate(size_t);
     void dump(std::ostream&);
 
   protected:

@@ -153,7 +153,7 @@ proc_pipes::read_child_stdout(RingBuffer* rbuf)
     size_t rsize = rbuf->write_from(fd_out[0]);
 #ifdef C4S_DEBUGTRACE
     if (rsize > 0)
-        c4slog << "proc_pipes::read_child_stdout - Wrote " << rsize << " bytes\n";
+        c4slog << "proc_pipes::read_child_stdout - " << rsize << " bytes\n";
 #endif
     return rsize > 0 ? true : false;
 }
@@ -168,27 +168,56 @@ proc_pipes::read_child_stderr(RingBuffer* rbuf)
     size_t rsize = rbuf->write_from(fd_err[0]);
 #ifdef C4S_DEBUGTRACE
     if (rsize > 0)
-        c4slog << "proc_pipes::read_child_stderr - Wrote " << rsize << " bytes\n";
+        c4slog << "proc_pipes::read_child_stderr - " << rsize << " bytes\n";
 #endif
     return rsize > 0 ? true : false;
 }
 // -------------------------------------------------------------------------------------------------
 /*!
-  Writes the given string into the child input.
+  Writes the RingBuffer content into the child input.
   \param input String to write.
 */
 size_t
-proc_pipes::write_child_input(RingBuffer* rbuf)
+proc_pipes::write_child_input(RingBuffer* data)
 {
     size_t cnt = 0, ss;
-    if (!rbuf || !fd_in[1])
+    if (!data || !fd_in[1])
         return 0;
     do {
-        ss = rbuf->read_into(fd_in[1], rbuf->size());
+        ss = data->read_into(fd_in[1], data->size());
         cnt += ss;
     } while (ss > 0);
 #ifdef C4S_DEBUGTRACE
-    c4slog << "proc_pipes::write_child_input - Wrote " << cnt << " bytes to child stdin\n";
+    c4slog << "proc_pipes::write_child_input - " << cnt << " bytes to child stdin\n";
+#endif
+    return cnt;
+}
+// -------------------------------------------------------------------------------------------------
+size_t
+proc_pipes::write_child_input(ntbs* data)
+{
+    if (!data || !fd_in[1])
+        return 0;
+    ssize_t bw = 0;
+    size_t cnt = 0;
+    size_t max = data->len();
+    char *ptr = data->get();
+    int retry_count = 0;
+    while (retry_count < 10 && bw < (ssize_t) max) {
+        bw = ::write(fd_in[1], ptr, max);
+        if (bw == -1) {
+            if (errno == EAGAIN)
+                retry_count++;
+            else
+                return 0;
+        } else {
+            max -= (size_t) bw;
+            ptr += bw;
+            cnt += bw;
+        }
+    }
+#ifdef C4S_DEBUGTRACE
+    c4slog << "proc_pipes::write_child_input (ntbs) - Wrote " << cnt << " bytes to child stdin\n";
 #endif
     return cnt;
 }
@@ -359,8 +388,6 @@ process::operator=(const process& source)
         rb_out.max_size(source.rb_out.max_size());
     if (source.rb_err.max_size())
         rb_err.max_size(source.rb_err.max_size());
-    if (source.rb_in.max_size())
-        rb_in.max_size(source.rb_in.max_size());
     daemon = source.daemon;
 }
 // ### \TODO continue to improve documentation from here on down.
@@ -467,7 +494,7 @@ process::start(const char* args)
     for (int i = 0; arg_ptr[i]; i++)
         c4slog << " [" << i << "] " << arg_ptr[i] << '\n';
     c4slog << " About to fork from parent: " <<getpid() << '\n';
-    c4slog << " rb_out="<<rb_out.max_size()<<"; rb_err="<<rb_err.max_size() << '\n';;
+    c4slog << " rb_out="<<rb_out.max_size()<<"; rb_err="<<rb_err.max_size() << endl;
 #else
     if (echo) {
         cerr << command.get_base() << '(';
@@ -493,9 +520,6 @@ process::start(const char* args)
     proc_ended = proc_started;
     pid = fork();
     if (!pid) {
-#ifdef C4S_DEBUGTRACE
-        c4slog << "process::start - created child: " << getpid() << endl;
-#endif
         pipes->init_child();
         delete pipes;
         if (owner) {
@@ -517,10 +541,9 @@ process::start(const char* args)
     pipes->init_parent();
     if (dynamic_buffer)
         delete[] dynamic_buffer;
-    // If child input file has been defined, feed it to child.
-    if (rb_in.max_size()) {
-        pipes->write_child_input(&rb_in);
-    }
+#ifdef C4S_DEBUGTRACE
+    c4slog << "process::start - created child: " << pid << '\n';
+#endif
 }
 // -------------------------------------------------------------------------------------------------
 void
@@ -591,13 +614,15 @@ process::wait_for_exit()
 #ifdef C4S_DEBUGTRACE
     c4slog << "process::wait_for_exit - name=" << command.get_base()
         << ", pid=" << pid
-        << ", timeout=" << timeout << '\n';
-#endif
+        << ", timeout=" << timeout << endl;
+    while (is_running()) {
+        sleep(1);
+    }
+#else
     while (is_running()) {
         // Intentionally empty
     }
-    pid = 0;
-    stop();
+#endif
     if (nzrv_exception && last_ret_val != 0) {
         ostringstream os;
         os << "Process: '" << command.get_base() << ' ' << arguments.str()
@@ -605,6 +630,36 @@ process::wait_for_exit()
         throw process_exception(os.str());
     }
     return last_ret_val;
+}
+// -------------------------------------------------------------------------------------------------
+int
+process::query(ntbs* question, ntbs* answer, int _timeout)
+{
+    timeout = _timeout;
+    if (answer)
+        rb_out.max_size(answer->size());
+    start();
+    if (question) {
+        write_stdin(question);
+        close_stdin();
+    }
+    wait_for_exit();
+    if (answer)
+        rb_out.read_into(answer);
+    return last_ret_val;
+}
+// STATIC ------------------------------------------------------------------------------------------
+/*! \param cmd Command to run.
+  \param args Command arguments.
+  \param output Buffer where the output will be stored into.
+*/
+int
+process::query(const char* cmd, const char* args, ntbs* input, ntbs* answer, int _timeout)
+{
+    if (!cmd)
+        return -1;
+    process source(cmd, args);
+    return source.query(input, answer, _timeout);
 }
 // -------------------------------------------------------------------------------------------------
 /*!
@@ -640,7 +695,7 @@ process::is_running()
         sout_out = pipes->read_child_stdout(&rb_out);
     if (serr_out || sout_out) {
 #ifdef C4S_DEBUGTRACE
-        c4slog << "process::is_running - data read for: " << command.get_base() << '\n';
+        c4slog << "process::is_running - data read for: " << command.get_base() << endl;
 #endif
         return true;
     }
@@ -662,10 +717,6 @@ process::is_running()
     // We are done, close up.
     last_ret_val = interpret_process_status(status);
     pid = 0;
-#ifdef C4S_DEBUGTRACE
-    c4slog << "process::is_running - stopping: " << command.get_base()
-        << "; retval: "<< last_ret_val << '\n';
-#endif
     stop();
     return false;
 }
@@ -867,30 +918,12 @@ process::stop()
     proc_ended = clock();
 #ifdef C4S_DEBUGTRACE
     c4slog << "process::stop - name=" << command.get_base()
-        << "; runtime= " << duration() << '\n';
+        << "; runtime= " << duration() << endl;
 #endif
     if (pipes) {
         delete pipes;
         pipes = 0;
     }
-}
-// -------------------------------------------------------------------------------------------------
-/*! \param cmd Command to run.
-  \param args Command arguments.
-  \param output Buffer where the output will be stored into.
-*/
-int
-process::catch_output(const char* cmd, const char* args, string& output)
-{
-    process source(cmd, args, PIPE::SM);
-    int rv = source();
-    source.rb_out.read_into(output);
-    if (rv && nzrv_exception) {
-        ostringstream oss;
-        oss << "process::catch-output - command returned error " << rv;
-        throw process_exception(oss.str());
-    }
-    return rv;
 }
 
 } // namespace c4s

@@ -5,8 +5,8 @@
  * of the following commands:
  *
  * Linux / OSX:
- *   g++ -o build build.cxx -Wall -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O2 
- *   g++ -o build build.cxx -Wall -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O0 -ggdb
+ *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O2
+ *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O0 -ggdb
  *
  * Windows Visual Studio:
  *   cl /Febuilder.exe /O2 /MD /EHsc /W2 builder.cpp Advapi32.lib
@@ -27,6 +27,8 @@
 #include <iostream>
 #include <sstream>
 
+#include "ntbs.hpp"
+#include "ntbs.cpp"
 #include "builder.cpp"
 #include "builder.hpp"
 #include "builder_gcc.cpp"
@@ -61,6 +63,9 @@ const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "program_arguments.cpp util.cpp variables.cpp "
                        "settings.cpp process.cpp user.cpp builder_gcc.cpp "
                        "RingBuffer.cpp ntbs.cpp";
+
+int install(const string& install_dir);
+
 // -------------------------------------------------------------------------------------------------
 int
 documentation()
@@ -154,8 +159,12 @@ build(ostream* log)
         cout << "\nBuild failed.\n";
         delete make2;
         return 2;
-    } else
+    } else {
         cout << "Compilation ready.\n";
+#ifdef AUTOINSTALL
+        install("/usr/local/");
+#endif
+    }
     delete make2;
     return 0;
 }
@@ -181,14 +190,14 @@ clean()
 }
 // -------------------------------------------------------------------------------------------------
 int
-install()
+install(const string& install_dir)
 {
     path lbin;
     path home(args.exe);
     path_iterator pi;
 
     cout << "Installing Cpp4Scripts\n";
-    path inst_root(append_slash(args.get_value("-install")));
+    path inst_root(install_dir);
     if (!inst_root.dirname_exists()) {
         cout << "Installation root directory " << inst_root.get_path() << " must exist.\n";
         return 1;
@@ -217,7 +226,7 @@ install()
     path make_name("makec4s");
 
     int lib_count = 0;
-    if (dlib.exists()) {
+    if (dlib.exists() && args.is_set("-deb")) {
         path lib(inst_root);
         lib += "lib-d/";
         if (!lib.dirname_exists())
@@ -227,7 +236,7 @@ install()
             cout << "Copied " << dlib.get_path() << " to " << lib.get_path() << '\n';
         lib_count++;
     }
-    if (rlib.exists()) {
+    if (rlib.exists() && args.is_set("-rel")) {
         path lib(inst_root);
         lib += "lib/";
         if (!lib.dirname_exists())
@@ -317,7 +326,7 @@ main(int argc, char** argv)
         if (args.is_set("-clean"))
             return clean();
         if (args.is_set("-install"))
-            return install();
+            return install(append_slash(args.get_value("-install")));
     } catch (const exception& ce) {
         cout << "Function failed: " << ce.what() << '\n';
         return 1;

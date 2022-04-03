@@ -1,10 +1,10 @@
 /*******************************************************************************
-process.cpp
-This is a sample for Cpp4Scripting library.
+process_t.cpp
+This is a sample and unit test file for Cpp4Scripting library.
 
 g++ -x c++ -fno-rtti -I.. -Wall -pthread -O0 -ggdb -Wundef -Wno-unused-result\
  -fcompare-debug-second -fexceptions -fuse-cxa-atexit\
- -std=c++17 -o t_process t_process.cpp -lc4s -L../debug
+ -DC4S_DEBUGTRACE -std=c++17 -o process_t process_t.cxx -lc4s -L../debug
 
 ../makec4s --dev -s process_t.cxx
 ................................................................................
@@ -18,8 +18,8 @@ Copyright (c) Menacon Ltd
 #include <time.h>
 
 // #include "../cpp4scripts.hpp"
+#include "../ntbs.cpp"
 #include "../path.hpp"
-#include "../path.cpp"
 #include "../RingBuffer.hpp"
 #include "../RingBuffer.cpp"
 #include "../process.hpp"
@@ -72,15 +72,31 @@ bool test3()
     // Arg 6 : [on]
     // Arg 7 : [fire]
     //               | samis\' \'  'world for peace' "one's heart".. 'dude\'s pants' on fire |
-    process("echo"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ")();
+    process("echo"," samis\\' \\'  'world for peace'  \"one's heart\".. 'dude\\'s pants' on fire ")(cout);
     return true;
 }
+
 bool test4()
 {
-    // Test the stdout shorthand
+    // Test the output stream
     process("ls", "-l", PIPE::SM)(cout);
     return true;
 }
+
+bool test5()
+{
+    ntbs original("Curabitur vehicula arcu sit amet dolor placerat pharetra ut vel metus.\n"
+    " Aenean ac ultrices sem, at accumsan nibh. Sed sed pellentesque ligula.\n"
+    " In sed metus tincidunt massa lobortis condimentum in quis velit. Morbi luctus rhoncus ornare.");
+    ntbs copy(256);
+    process::query("client", "-c", &original, &copy);
+
+    cout << original.get() << '\n';
+    cout << copy.get() << '\n';
+
+    return true;
+}
+
 #if 0
 
 bool test5()
@@ -192,6 +208,7 @@ int main(int argc, char **argv)
         { &test2, "List cpp-files via git ls-files."},
         { &test3, "Run test client with several parameters. Testing parameter parsing."},
         { &test4, "Run test client with couple of simple params. Pipe to stdout."},
+        { &test5, "Static process::query."},
         // { &test3, "Create [user].tmp file into current directory by running touch as VALUE user."},
         // { &test6, "Test the use of execa - running same process with varied arguments."},
         // { &test7, "Test the use of process user (linux only)"},

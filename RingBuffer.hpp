@@ -15,6 +15,8 @@
 
 namespace c4s {
 
+class ntbs;
+
 class RBCallBack
 {
   public:
@@ -37,6 +39,7 @@ class RingBuffer
     size_t read_data(void*, size_t);
     //! Read character string.
     size_t read(char*, size_t);
+    size_t read_into(ntbs*);
     size_t read_into(std::string&);
     size_t read_into(std::ostream&);
     size_t read_into(int fd, size_t len);

@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string.h>
 
+#include "ntbs.hpp"
 #include "RingBuffer.hpp"
 
 namespace c4s {
@@ -157,6 +158,17 @@ RingBuffer::read(char* str, size_t slen)
     size_t rb = read_data(str, slen-1);
     str[rb] = 0;
     return rb;
+}
+// -------------------------------------------------------------------------------------------------
+size_t
+RingBuffer::read_into(ntbs* output)
+{
+    if (!output)
+        return 0;
+    output->realloc(size_internal());
+    size_t bw = read_data(output->get(), output->size());
+    output->terminate(bw);
+    return bw;
 }
 // -------------------------------------------------------------------------------------------------
 size_t

@@ -123,16 +123,16 @@ class process
     //! Enables or disables command echoing before execution.
     void set_echo(bool e) { echo = e; }
     //! Set explicit pipe buffer sizes for stdout and stderr.
-    void set_pipe_size(size_t s_out, size_t s_err) {
-        rb_out.max_size(s_out);
-        rb_err.max_size(s_err);
+    void set_pipe_size(size_t bytes_o, size_t bytes_e) {
+        rb_out.max_size(bytes_o);
+        rb_err.max_size(bytes_e);
     }
     //! Returns the pid for this process.
     int get_pid() { return pid; }
     //! Attaches this object to running process.
-    void attach(int pid);
+    bool attach(int pid);
     //! Attaches this object to running process with pid in named pid-file
-    void attach(const path& pid_file);
+    bool attach(const path& pid_file);
 
     //! Starts the executable process.
     /*! Process runs assynchronously. Command and possible arguments should have been given before
@@ -182,7 +182,9 @@ class process
     RingBuffer rb_err;
 
     static bool no_run; // 1< If true then the command is simply echoed to stdout but not actually run. i.e. dry run.
-    static bool nzrv_exception; //!< If true 'Non-Zero Return Value' causes exception.
+    static bool nzrv_exception;   //!< If true 'Non-Zero Return Value' causes exception.
+    static bool nzrv_save_stderr; //!< If true then 'Non-Zero Return Value' causes saving stderr to stdout
+                                  //   if it is available. Default is true.
     static unsigned int general_timeout;
 
   protected:

@@ -29,9 +29,14 @@
 #include "RingBuffer.hpp"
 #include "process.hpp"
 #include "util.hpp"
+#include "logger.hpp"
 
 using namespace std;
 using namespace c4s;
+
+#ifdef C4S_DEBUGTRACE
+#pragma GCC warning "process c4s trace is ON"
+#endif
 
 namespace c4s {
 
@@ -226,7 +231,8 @@ proc_pipes::write_child_input(ntbs* data)
 // ###############################  PROCESS ########################################################
 // -------------------------------------------------------------------------------------------------
 bool process::no_run = false;
-bool process::nzrv_exception = false; //!< If true 'Non-Zero Return Value' causes exception.
+bool process::nzrv_exception = false;
+bool process::nzrv_save_stderr = true;
 unsigned int process::general_timeout = 0;
 
 // -------------------------------------------------------------------------------------------------
@@ -251,7 +257,8 @@ process::init_member_vars()
   \param _owner = User account that should be used to run the process.
 */
 process::process(const char* cmd, const char* args, PIPE pipe, user* _owner) :
-    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
+    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) ),
+    rb_err( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
 {
     init_member_vars();
     set_command(cmd);
@@ -288,7 +295,8 @@ process::process(const char* cmd, const char* args, PIPE pipe, user* _owner) :
   \param _owner = User account that should be used to run the process.
 */
 process::process(const string& cmd, const string& args, PIPE pipe, user* _owner):
-    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
+    rb_out( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) ),
+    rb_err( pipe == PIPE::NONE ? 0 : (pipe == PIPE::SM ? RB_SIZE_SM : RB_SIZE_LG) )
 {
     init_member_vars();
     set_command(cmd.c_str());
@@ -561,75 +569,46 @@ process::set_user(user* _owner)
   and then calling stop-function. Exception is thrown if pid is not found. If process alredy is
   running this function does nothing. Daemon mode is set on. \param _pid Process id to attach to.
  */
-void
+bool
 process::attach(int _pid)
 {
-    if (pid)
-        return;
+    if (pid) {
+        CS_PRINT_ERRO("process::attach - pid already attached.");
+        return false;
+    }
     pid = _pid;
     last_ret_val = 0;
     daemon = true;
-    if (!is_running()) {
-        ostringstream os;
-        os << "process::attach - Cannot attach. Process with PID (" << pid << ") not found.";
-        throw process_exception(os.str());
+    if (pipes) {
+        delete pipes;
+        pipes = 0;
     }
+    if (kill(pid, 0) != 0) {
+        CS_PRINT_ERRO("process::attach - process already stopped or invalid pid.");
+        return false;
+    }
+    return true;
 }
 // -------------------------------------------------------------------------------------------------
-void
+bool
 process::attach(const path& pid_file)
 {
     long attach_pid = 0;
     ostringstream os;
     if (!pid_file.exists()) {
-        os << "process::attach - pid file " << pid_file.get_path() << " not found";
-        throw process_exception(os.str());
+        CS_PRINT_ERRO("process::attach - pid file not found.");
+        return false;
     }
     ifstream pf(pid_file.get_path().c_str());
     if (!pf) {
-        os << "process::attach - Unable to open pid file " << pid_file.get_path();
-        throw process_exception(os.str());
+        CS_PRINT_ERRO("process::attach - Unable to open pid file.");
+        return false;
     }
     pf >> attach_pid;
     if (attach_pid)
-        attach((int)attach_pid);
-    else {
-        os << "process::attach - Unable to read pid from file " << pid_file.get_path();
-        throw process_exception(os.str());
-    }
-}
-// -------------------------------------------------------------------------------------------------
-/*! \retval int Return value from the process.
-*/
-int
-process::wait_for_exit()
-{
-    if (!pid)
-        return last_ret_val;
-    if (no_run) {
-        last_ret_val = 0;
-        return 0;
-    }
-
-#ifdef C4S_DEBUGTRACE
-    c4slog << "process::wait_for_exit - name=" << command.get_base()
-        << ", pid=" << pid
-        << ", timeout=" << timeout << endl;
-    while (is_running()) {
-        sleep(1);
-    }
-#else
-    while (is_running()) {
-        // Intentionally empty
-    }
-#endif
-    if (nzrv_exception && last_ret_val != 0) {
-        ostringstream os;
-        os << "Process: '" << command.get_base() << ' ' << arguments.str()
-           << "' retured:" << last_ret_val;
-        throw process_exception(os.str());
-    }
-    return last_ret_val;
+        return attach((int)attach_pid);
+    CS_PRINT_ERRO("process::attach - Unable to read pid from file.");
+    return false;
 }
 // -------------------------------------------------------------------------------------------------
 int
@@ -687,17 +666,19 @@ process::is_running()
         }
     }
     // Read the pipes
-    bool serr_out = false;
-    bool sout_out = false;
-    if (rb_err.max_size())
-        serr_out = pipes->read_child_stderr(&rb_err);
-    if (rb_out.max_size())
-        sout_out = pipes->read_child_stdout(&rb_out);
-    if (serr_out || sout_out) {
-#ifdef C4S_DEBUGTRACE
-        c4slog << "process::is_running - data read for: " << command.get_base() << endl;
-#endif
-        return true;
+    if (pipes) {
+        bool serr_out = false;
+        bool sout_out = false;
+        if (rb_err.max_size())
+            serr_out = pipes->read_child_stderr(&rb_err);
+        if (rb_out.max_size())
+            sout_out = pipes->read_child_stdout(&rb_out);
+        if (serr_out || sout_out) {
+    #ifdef C4S_DEBUGTRACE
+            c4slog << "process::is_running - data read for: " << command.get_base() << endl;
+    #endif
+            return true;
+        }
     }
     // Are we still running
     int status;
@@ -711,14 +692,51 @@ process::is_running()
     if (wait_val && wait_val != pid) {
         ostringstream os;
         os << "process::is_running - name=" << command.get_base()
-           << ", wait error: " << strerror(errno);
+           << "; pid=" << pid
+           << "; wait error: " << strerror(errno);
         throw process_exception(os.str());
     }
     // We are done, close up.
     last_ret_val = interpret_process_status(status);
+#ifdef C4S_DEBUGTRACE
+    c4slog << "process::is_running - running stopped. Returns: " << last_ret_val << '\n';
+#endif
     pid = 0;
     stop();
     return false;
+}
+// -------------------------------------------------------------------------------------------------
+/*! \retval int Return value from the process.
+*/
+int
+process::wait_for_exit()
+{
+    if (!pid)
+        return last_ret_val;
+    if (no_run) {
+        last_ret_val = 0;
+        return 0;
+    }
+
+#ifdef C4S_DEBUGTRACE
+    c4slog << "process::wait_for_exit - name=" << command.get_base()
+        << ", pid=" << pid
+        << ", timeout=" << timeout << endl;
+    while (is_running()) {
+        sleep(1);
+    }
+#else
+    while (is_running()) {
+        // Intentionally empty
+    }
+#endif
+    if (nzrv_exception && last_ret_val != 0) {
+        ostringstream os;
+        os << "Process: '" << command.get_base() << ' ' << arguments.str()
+           << "' retured:" << last_ret_val;
+        throw process_exception(os.str());
+    }
+    return last_ret_val;
 }
 // -------------------------------------------------------------------------------------------------
 /*!
@@ -768,6 +786,8 @@ process::operator()(std::ostream& os)
     for(start(); is_running(); ) {
         rb_out.read_into(os);
     }
+    if (last_ret_val && nzrv_save_stderr)
+        rb_err.read_into(os);
     return last_ret_val;
 }
 int
@@ -864,10 +884,16 @@ void
 process::stop()
 {
     if (pipes) {
-        if (rb_err.max_size())
-            pipes->read_child_stderr(&rb_err);
         if (rb_out.max_size())
             pipes->read_child_stdout(&rb_out);
+        if (rb_err.max_size())
+            pipes->read_child_stderr(&rb_err);
+//         else if(nzrv_save_stderr && last_ret_val && rb_out.max_size()) {
+// #ifdef C4S_DEBUGTRACE
+//             c4slog << "process::stop - error in process. Try to read stderr.\n";
+// #endif
+//             pipes->read_child_stderr(&rb_out);
+//        }
     }
     if (pid) {
         if (daemon) {

@@ -55,7 +55,7 @@ namespace c4s {
 // Library constants
 const SSIZE_T SSIZE_T_MAX = ~0;
 const int     MAX_LINE    = 512;
-const size_t  RB_SIZE_SM  = 256;
+const size_t  RB_SIZE_SM  = 512;
 const size_t  RB_SIZE_LG  = 8192;
 const int     MAX_NESTING = 50;
 const int     BUILDER_TIMEOUT = 45;

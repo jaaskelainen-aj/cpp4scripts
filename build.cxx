@@ -150,6 +150,8 @@ build(ostream* log)
     builder* make2 = new builder_gcc(&plmkc4s, "makec4s", log);
     make2->set(BUILD::BIN);
     make2->add(args.is_set("-deb") ? BUILD::DEB : BUILD::REL);
+    if (args.is_set("-t"))
+        make2->add_comp("-DC4S_DEBUGTRACE");
     if (args.is_set("-V"))
         make2->add(BUILD::VERBOSE);
     make2->add_comp("-fno-rtti");

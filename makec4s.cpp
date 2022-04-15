@@ -15,6 +15,10 @@ using namespace c4s;
 
 program_arguments args;
 
+#ifdef C4S_DEBUGTRACE
+std::ofstream c4slog;
+#endif
+
 int
 make_template()
 {

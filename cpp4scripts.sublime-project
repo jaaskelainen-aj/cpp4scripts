@@ -3,8 +3,18 @@
         { "path": ".", "folder_exclude_patterns": ["debug", "release", "html"], "file_exclude_patterns": ["*.dSYM"] }
     ],
     "build_systems": [
-        { "name": "R init", "shell_cmd": "$project_path/remote-build.sh init", "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)" },
-        { "name": "R build", "shell_cmd": "$project_path/remote-build.sh", "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)" }
+        {
+            "name": "R init",
+            "shell_cmd": "$project_path/remote-build.sh init",
+            "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)",
+            "working_dir": "$project_path"
+        },
+        {
+            "name": "R build",
+            "shell_cmd": "$project_path/remote-build.sh",
+            "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)",
+            "working_dir": "$project_path"
+        }
     ],
     "settings": {
         "rulers": [100],

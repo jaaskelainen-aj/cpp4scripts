@@ -12,10 +12,9 @@
 #define C4S_RINGBUFFER_HPP
 
 #include <iostream>
+#include "ntbs/ntbs.hpp"
 
 namespace c4s {
-
-class ntbs;
 
 class RBCallBack
 {

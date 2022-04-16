@@ -27,8 +27,8 @@
 #include <iostream>
 #include <sstream>
 
-#include "ntbs.hpp"
-#include "ntbs.cpp"
+#include "ntbs/ntbs.hpp"
+#include "ntbs/ntbs.cpp"
 #include "builder.cpp"
 #include "builder.hpp"
 #include "builder_gcc.cpp"
@@ -51,6 +51,8 @@
 #include "variables.hpp"
 #include "version.hpp"
 
+#include "logger.cpp"
+
 using namespace std;
 using namespace c4s;
 
@@ -62,7 +64,7 @@ program_arguments args;
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "program_arguments.cpp util.cpp variables.cpp "
                        "settings.cpp process.cpp user.cpp builder_gcc.cpp "
-                       "RingBuffer.cpp ntbs.cpp";
+                       "RingBuffer.cpp ntbs/ntbs.cpp";
 
 int install(const string& install_dir);
 
@@ -92,7 +94,7 @@ build(ostream* log)
 
     path_list cppFiles(cpp_list, ' ');
 
-    builder* make = new builder_gcc(&cppFiles, "c4s", log);
+    builder* make = new builder_gcc(cppFiles, "c4s", log);
     make->set(BUILD::LIB);
 
     if (!args.is_set("-deb") && !args.is_set("-rel")) {
@@ -147,7 +149,7 @@ build(ostream* log)
     path_list plmkc4s;
     plmkc4s += path("makec4s.cpp");
 
-    builder* make2 = new builder_gcc(&plmkc4s, "makec4s", log);
+    builder* make2 = new builder_gcc(plmkc4s, "makec4s", log);
     make2->set(BUILD::BIN);
     make2->add(args.is_set("-deb") ? BUILD::DEB : BUILD::REL);
     if (args.is_set("-t"))
@@ -214,9 +216,8 @@ install(const string& install_dir)
 
     // Copy sources
     if (args.is_set("-V")) {
-        cout << "Copying headers and sources.\n";
+        cout << "Copying headers.\n";
     }
-    path_list sources(cpp_list, ' ');
     string target = "c4s";
     if (args.is_set("-l")) {
         target += '-';
@@ -255,14 +256,17 @@ install(const string& install_dir)
         cout << "  " << dlib.get_path() << '\n';
         cout << "  " << rlib.get_path() << '\n';
     }
-    sources.set_dir(home);
-    path_list headers(args.exe, ".*hpp$");
+    path inc_src(args.exe);
+    path_list headers(inc_src, ".*hpp$");
     if (headers.size() == 0) {
         cout << "No C4S headers found. Installation aborted.\n";
         return 2;
     }
-    sources.copy_to(inc, PCF_FORCE);
     headers.copy_to(inc, PCF_FORCE);
+    inc_src.append_dir("ntbs");
+    inc.append_dir("ntbs");
+    path_list ntbs_h(inc_src, ".*hpp$");
+    ntbs_h.copy_to(inc, PCF_FORCE);
 
     // Copy makec4s utility
     if (args.is_set("-V"))

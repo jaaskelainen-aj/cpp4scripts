@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <string.h>
 
-#include "ntbs.hpp"
 #include "RingBuffer.hpp"
 
 namespace c4s {

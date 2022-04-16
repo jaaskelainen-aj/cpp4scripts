@@ -10,8 +10,8 @@
 #define C4S_PROCESS_HPP
 
 #include <sstream>
+#include "ntbs/ntbs.hpp"
 #include "RingBuffer.hpp"
-#include "ntbs.hpp"
 
 namespace c4s {
 

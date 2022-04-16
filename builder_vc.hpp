@@ -17,7 +17,7 @@ class builder_vc : public builder
 {
   public:
     //! Constructor for Microsoft Visual Studio builder.
-    builder_vc(path_list* sources, const char* name, ostream* log);
+    builder_vc(path_list& sources, const char* name, ostream* log);
     int build();
     //! Helper function for MS VC to create precompiled headers.
     int precompile(const char* name, const char* content, const char* stopname);

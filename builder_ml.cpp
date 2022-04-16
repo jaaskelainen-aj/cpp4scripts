@@ -24,7 +24,7 @@ using namespace c4s;
 #ifdef _WIN32
 
 // -------------------------------------------------------------------------------------------------
-c4s::builder_ml::builder_ml(path_list* _sources,
+c4s::builder_ml::builder_ml(path_list& _sources,
                             const char* _name,
                             ostream* _log,
                             const int _flags,
@@ -46,7 +46,7 @@ c4s::builder_ml::builder_ml(path_list* _sources,
         if (has_any(BUILD::DEB)) {
             c_opts << "/Zi ";
         }
-        if (sources && sources->size() > 1)
+        if (sources && sources.size() > 1)
             c_opts << "/c ";
         if (has_any(BUILD::X32))
             c_opts << "/coff ";
@@ -83,10 +83,10 @@ c4s::builder_ml::build()
     if (!sources)
         throw c4s_exception("builder_ml::build - build source files not defined.");
     // Only one file?
-    if (sources->size() == 1) {
+    if (sources.size() == 1) {
         // Combine compile+link.
         ostringstream single;
-        path src = sources->front();
+        path src = sources.front();
         single << " /Fo" << target;
         single << ' ' << c_opts.str() << ' ' << src.get_base() << " /link " << l_opts.str();
         if (log && has_any(BUILD::VERBOSE))

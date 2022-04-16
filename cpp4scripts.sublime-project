@@ -4,11 +4,7 @@
     ],
     "build_systems": [
         { "name": "R init", "shell_cmd": "$project_path/remote-build.sh init", "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)" },
-        {
-            "name": "R build",
-            "shell_cmd": "ssh root@menacon2.local 'cd /mnt/hgfs/vshare/cpp4scripts;./build -deb'",
-            "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)"
-        }
+        { "name": "R build", "shell_cmd": "$project_path/remote-build.sh", "file_regex": "^(.*):(\\d+):(\\d+):([^\\n]+)" }
     ],
     "settings": {
         "rulers": [100],

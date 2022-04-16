@@ -33,7 +33,7 @@ builder_gcc::parse_flags()
     link = has_any(BUILD::PLAIN_C) ? "gcc" : "g++";
     compiler.set_command(gpp.c_str());
 
-    if (!sources)
+    if (!sources.size())
         throw c4s_exception("builder_gcc::parse_flags - sources not defined!");
 
     // Determine the real target name.
@@ -69,14 +69,14 @@ builder_gcc::parse_flags()
 #else
         c_opts << "-Wall -fexceptions -pthread -fuse-cxa-atexit -Wundef -Wno-unused-result ";
 #endif
-        if (!has_any(BUILD::LIB) && sources->size() > 1) {
+        if (!has_any(BUILD::LIB) && sources.size() > 1) {
             l_opts << "-fexceptions -pthread ";
         }
     }
 
     if (has_any(BUILD::DEB)) {
         c_opts << "-ggdb -O0 -D_DEBUG ";
-        if (!has_any(BUILD::LIB) && sources && sources->size() > 1) {
+        if (!has_any(BUILD::LIB) && sources.size() > 1) {
             l_opts << "-ggdb -O0 ";
         }
     } else {
@@ -87,7 +87,7 @@ builder_gcc::parse_flags()
     }
     if (has_any(BUILD::WIDECH))
         c_opts << "-D_UNICODE -DUNICODE ";
-    if (sources->size() > 1)
+    if (sources.size() > 1)
         c_opts << "-c ";
 }
 
@@ -95,17 +95,17 @@ builder_gcc::parse_flags()
 BUILD_STATUS
 builder_gcc::build()
 {
-    if (!sources)
+    if (!sources.size())
         throw c4s_exception("builder_gcc::build - no sources to build.");
     parse_flags();
     if (has_any(BUILD::EXPORT))
         return BUILD_STATUS::OK;
 
     // Only one file?
-    if (sources->size() == 1) {
+    if (sources.size() == 1) {
         // Combine compile and link.
         ostringstream single;
-        path src = sources->front();
+        path src = sources.front();
         single << c_opts.str();
         single << "-o " << target << ' ' << src.get_base() << ' ';
         single << l_opts.str();

@@ -56,8 +56,14 @@ class builder : public BUILD
 {
   public:
     // Destructor, releases source list if it was reserved during build process.
-    virtual ~builder();
+    virtual ~builder() {}
 
+    //! Add list of source to existing file list
+    void add_sources(const path_list& src) {
+        sources.add(src);
+    }
+    //! Add files reported by 'git ls-files' command
+    void add_git_files();
     //! Adds more compiler options to existing ones.
     void add_comp(const std::string& arg);
     //! Adds more linker/librarian options to existing ones.
@@ -112,7 +118,7 @@ class builder : public BUILD
 
   protected:
     //! Protected constructor: Initialize builder with initial list of files to compile
-    builder(path_list* sources, const char* name, std::ostream* log);
+    builder(path_list& sources, const char* name, std::ostream* log);
     //! Protected constructor: File list is read from git.
     builder(const char* name, std::ostream* log);
     //! Executes compile step
@@ -129,13 +135,12 @@ class builder : public BUILD
     std::ostringstream c_opts; //!< List of options for the compiler.
     std::ostringstream l_opts; //!< List of options for the linker.
     std::ostream* log;         //!< If not null, will receive compiler and linker output (stderr)
-    c4s::path_list* sources;   //!< List of source files. Relative paths are possible.
+    c4s::path_list sources;    //!< List of source files. Relative paths are possible.
     c4s::path_list extra_obj;  //!< Optional additional object files to be included at link step.
     std::string name;          //!< Simple target name.
     std::string target;        //!< Decorated and final target name.
     std::string build_dir;     //!< Generated build directory name. No dir-separater at the end.
     std::string ccdb_root;     //!< Root directory for compiler_commands.json generation.
-    bool my_sources;           //!< If true builder has allocated the sources list.
     c4s::path current_obj;     //!< Path of the file currently being compiled.
 };
 

@@ -30,7 +30,7 @@ using namespace c4s;
    target \param flags Build flags \param subsys Optional subsystem indicator that is appended after
    the build dir name.
 */
-c4s::builder_vc::builder_vc(path_list* _sources,
+c4s::builder_vc::builder_vc(path_list& _sources,
                             const char* _name,
                             ostream* _log,
                             const int _flags,
@@ -59,7 +59,7 @@ c4s::builder_vc::builder_vc(path_list* _sources,
             c_opts << "/Zc:wchar_t /DUNICODE /D_UNICODE ";
         if (has_any(BUILD::X64))
             c_opts << "/favor:blend ";
-        if (sources && sources->size() > 1)
+        if (sources && sources.size() > 1)
             c_opts << "/c ";
     }
     // Determine the target name
@@ -113,10 +113,10 @@ c4s::builder_vc::build()
             c_opts << "/MD ";
     }
     // Only one file?
-    if (sources->size() == 1) {
+    if (sources.size() == 1) {
         // Combine compile+link.
         ostringstream single;
-        path src = sources->front();
+        path src = sources.front();
         single << " /Fe" << target;
         if (has_any(BUILD::DEB))
             single << " /Fd" << name << ".pdb";

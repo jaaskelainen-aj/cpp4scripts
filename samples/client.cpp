@@ -25,8 +25,9 @@ ofstream c4slog;
 int main(int argc, char **argv)
 {
     args += argument("-uid",false, "Put user and group id into log.");
-    args += argument("-w",  true,  "Outputs a line of text every <VALUE> seconds until Ctrl-c");
-    args += argument("-e",  true,  "Return error code 10.");
+    args += argument("-w",  true,  "Outputs a line of text every <VALUE> seconds until 10 lines sent.");
+    args += argument("-e",  true,  "Return error code <VALUE>.");
+    args += argument("-c",  false, "Waits a second and then copies stdin to stdout.");
     try{
         args.initialize(argc,argv);
     }catch(const c4s_exception& re){
@@ -61,13 +62,19 @@ int main(int argc, char **argv)
         log << "Current effective GID:"<<getegid()<<'\n';
         log << endl;
     }
-    if(args.is_set("-w")) {
-        cout << "Waiting for letter <S>\n";
-        char c;
+    if (args.is_set("-c")) {
+        log << "stdin bytes:"<<endl;
+        char buffer[256];
+        streamsize br;
         do {
-            cin >> c;
-            log << c;
-        } while (c != 'S');
+            cin.read(buffer, sizeof(buffer));
+            br = cin.gcount();
+            if (br) {
+                cout.write(buffer, br);
+                log.write(buffer, br);
+            }
+        } while (br > 0);
     }
+    log.close();
     return 0;
 }

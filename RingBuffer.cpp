@@ -160,6 +160,17 @@ RingBuffer::read(char* str, size_t slen)
 }
 // -------------------------------------------------------------------------------------------------
 size_t
+RingBuffer::read_into(ntbs* output)
+{
+    if (!output)
+        return 0;
+    output->realloc(size_internal());
+    size_t bw = read_data(output->get(), output->size());
+    output->terminate(bw);
+    return bw;
+}
+// -------------------------------------------------------------------------------------------------
+size_t
 RingBuffer::read_into(std::string& output)
 {
     last_read = 0;

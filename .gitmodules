@@ -1,0 +1,3 @@
+[submodule "ntbs"]
+	path = ntbs
+	url = git@github.com:jaaskelainen-aj/ntbs.git

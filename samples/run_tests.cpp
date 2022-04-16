@@ -1,3 +1,4 @@
+#include <fstream>
 
 typedef bool (*tfptr)();
 
@@ -14,7 +15,7 @@ struct TestItem {
   	const char* subject;
 };
 
-ofstream c4slog;
+std::ofstream c4slog;
 
 bool is_set(int argc, char** argv, const char* name)
 {

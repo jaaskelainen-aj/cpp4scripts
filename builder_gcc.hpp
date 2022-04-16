@@ -17,7 +17,7 @@ class builder_gcc : public builder
 {
   public:
     //! g++ builder constructor
-    builder_gcc(path_list* sources, const char* name, std::ostream* log)
+    builder_gcc(path_list& sources, const char* name, std::ostream* log)
       : builder(sources, name, log)
     {}
 

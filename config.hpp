@@ -14,10 +14,10 @@
    The higher the level number, less messages are displayed. 1 = trace ... 7 critical. Set
    C4S_LOG_LEVEL define to 0 to include all logs to build and to 8 to remove all from binary.*/
 #ifndef C4S_LOG_LEVEL
-#ifdef _DEBUG
-#define C4S_LOG_LEVEL 2
-#else
+#ifdef NDEBUG
 #define C4S_LOG_LEVEL 3
+#else
+#define C4S_LOG_LEVEL 2
 #endif
 #endif
 
@@ -55,7 +55,7 @@ namespace c4s {
 // Library constants
 const SSIZE_T SSIZE_T_MAX = ~0;
 const int     MAX_LINE    = 512;
-const size_t  RB_SIZE_SM  = 256;
+const size_t  RB_SIZE_SM  = 512;
 const size_t  RB_SIZE_LG  = 8192;
 const int     MAX_NESTING = 50;
 const int     BUILDER_TIMEOUT = 45;

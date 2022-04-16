@@ -9,6 +9,8 @@
 #ifndef C4S_PROCESS_HPP
 #define C4S_PROCESS_HPP
 
+#include <sstream>
+#include "ntbs/ntbs.hpp"
 #include "RingBuffer.hpp"
 
 namespace c4s {
@@ -31,6 +33,7 @@ class proc_pipes
     bool read_child_stdout(RingBuffer*);
     bool read_child_stderr(RingBuffer*);
     size_t write_child_input(RingBuffer*);
+    size_t write_child_input(ntbs*);
     void close_child_input();
 
   protected:
@@ -95,10 +98,15 @@ class process
     //! Adds the given string into argument list.
     void operator+=(const std::string& arg) { arguments << ' ' << arg; }
 
-    //! Forward content from given stream into process' stdin
-    void write_stdin() {
-        if (pipes && rb_in.max_size())
-            pipes->write_child_input(&rb_in);
+    //! Forward content from given buffer into process' stdin
+    void write_stdin(RingBuffer *data) {
+        if (pipes)
+            pipes->write_child_input(data);
+    }
+    //! Forward content from given string into process' stdin
+    void write_stdin(ntbs *data) {
+        if (pipes)
+            pipes->write_child_input(data);
     }
     //! Closes the send pipe to client.
     void close_stdin() {
@@ -115,18 +123,16 @@ class process
     //! Enables or disables command echoing before execution.
     void set_echo(bool e) { echo = e; }
     //! Set explicit pipe buffer sizes for stdout and stderr.
-    void set_pipe_size(size_t s_out, size_t s_err, size_t s_in=0) {
-        rb_out.max_size(s_out);
-        rb_err.max_size(s_err);
-        if (s_in)
-            rb_in.max_size(s_in);
+    void set_pipe_size(size_t bytes_o, size_t bytes_e) {
+        rb_out.max_size(bytes_o);
+        rb_err.max_size(bytes_e);
     }
     //! Returns the pid for this process.
     int get_pid() { return pid; }
     //! Attaches this object to running process.
-    void attach(int pid);
+    bool attach(int pid);
     //! Attaches this object to running process with pid in named pid-file
-    void attach(const path& pid_file);
+    bool attach(const path& pid_file);
 
     //! Starts the executable process.
     /*! Process runs assynchronously. Command and possible arguments should have been given before
@@ -149,12 +155,18 @@ class process
     int operator()(const char* args=nullptr);
     //! Runs the process overriding current arguments.
     int operator()(const std::string& args);
-    //! Runs the process echoing output to named stream, usually stdout/cout.
+    //! Runs the process copying output into named stream.
     int operator()(std::ostream&);
     //! Runs process overriding arguments and sends output to given stream.
     int operator()(const std::string& args, std::ostream&);
+    //! Runs process sending input and waiting for answer.
+    int query(ntbs* question, ntbs* answer, int timeout=5);
+    //! Static function that returns an output from given command.
+    static int query(const char* cmd, const char* args, ntbs* input, ntbs* answer=0, int timeout=15);
     //! Checks if the process is still running.
     bool is_running();
+    //! Waits for the process to exit.
+    int wait_for_exit();
 
     //! Returns true if command exists in the system.
     bool is_valid() { return !command.empty(); }
@@ -163,17 +175,16 @@ class process
     //! Returns number of seconds process ran at the last execution.
     double duration() { return ((double) (proc_ended - proc_started)) / CLOCKS_PER_SEC; }
 
-    //! Static function that returns an output from given command.
-    static int catch_output(const char* cmd, const char* args, std::string& output);
     //! Dumps the process name and arguments into given stream. Use for debugging.
     void dump(std::ostream&);
 
     RingBuffer rb_out;
     RingBuffer rb_err;
-    RingBuffer rb_in;
 
     static bool no_run; // 1< If true then the command is simply echoed to stdout but not actually run. i.e. dry run.
-    static bool nzrv_exception; //!< If true 'Non-Zero Return Value' causes exception.
+    static bool nzrv_exception;   //!< If true 'Non-Zero Return Value' causes exception.
+    static bool nzrv_save_stderr; //!< If true then 'Non-Zero Return Value' causes saving stderr to stdout
+                                  //   if it is available. Default is true.
     static unsigned int general_timeout;
 
   protected:
@@ -181,8 +192,6 @@ class process
     void init_member_vars();
     //! Stops a deamon i.e. process started with another process object earlier.
     void stop_daemon();
-    //! Waits for the process to exit.
-    int wait_for_exit();
 
     path command;                //!< Full path to a command that should be executed.
     std::stringstream arguments; //!< Stream of process arguments. Must not contain variables.

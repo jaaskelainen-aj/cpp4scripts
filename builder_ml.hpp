@@ -17,7 +17,7 @@ class builder_ml : public builder
 {
   public:
     //! Constructor for Microsoft Macro Assembler
-    builder_ml(path_list* sources, const char* name, ostream* log);
+    builder_ml(path_list& sources, const char* name, ostream* log);
     int build();
 };
 }

@@ -749,9 +749,6 @@ c4s::path::mkdir() const
         tmp.make_absolute();
         fullpath = tmp.get_dir();
     }
-//#ifdef _DEBUG
-//    cout << "DEBUG: fullpath: "<<fullpath<<'\n';
-//#endif
 #if defined(__linux) || defined(__APPLE__)
     size_t offset = 1;
 #endif

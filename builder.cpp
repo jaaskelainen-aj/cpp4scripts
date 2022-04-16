@@ -31,12 +31,11 @@ namespace c4s {
     \param _name Name of the target binary
     \param _log If specified, will receive compiler output.
 */
-builder::builder(path_list* _sources, const char* _name, ostream* _log)
+builder::builder(path_list& _sources, const char* _name, ostream* _log)
   : log(_log)
   , name(_name)
 {
-    sources = _sources;
-    my_sources = false;
+    sources.add(_sources);
     if (_log) {
         compiler.set_pipe_size(0, 8192);
         linker.set_pipe_size(0, 8192);
@@ -55,22 +54,8 @@ builder::builder(const char* _name, ostream* _log)
   : log(_log)
   , name(_name)
 {
-    try {
-        sources = new path_list();
-        my_sources = true;
-        char gitline[255];
-        process git("git", "ls-files", PIPE::LG);
-        for (git.start(); git.is_running(); ) {
-            while (git.rb_out.read_line(gitline, sizeof(gitline)) ) {
-                if (strstr(gitline, ".cpp"))
-                    sources->add(path(gitline));
-            }
-        }
-    } catch (const c4s_exception& ce) {
-        if (_log)
-            *_log << "Unable to read source list from git: " << ce.what() << '\n';
-    }
-    if (_log) {
+    add_git_files();
+    if (log) {
         compiler.set_pipe_size(0, 8192);
         linker.set_pipe_size(0, 8192);
     }
@@ -78,12 +63,23 @@ builder::builder(const char* _name, ostream* _log)
     linker.set_timeout(BUILDER_TIMEOUT);
 }
 // -------------------------------------------------------------------------------------------------
-builder::~builder()
+void
+builder::add_git_files()
 {
-    if (my_sources && sources)
-        delete sources;
+    try {
+        char gitline[255];
+        process git("git", "ls-files", PIPE::LG);
+        for (git.start(); git.is_running(); ) {
+            while (git.rb_out.read_line(gitline, sizeof(gitline)) ) {
+                if (strstr(gitline, ".cpp"))
+                    sources.add(path(gitline));
+            }
+        }
+    } catch (const c4s_exception& ce) {
+        if (log)
+            *log << "Unable to read source list from git: " << ce.what() << '\n';
+    }
 }
-
 // -------------------------------------------------------------------------------------------------
 /** Read build variables from a given file.
     If the file is not specified environment variable C4S_VARIABLES will be read and its value used as a
@@ -137,7 +133,7 @@ builder::add_link(const compiled_file& cf)
 bool
 builder::check_includes(const path& source, int rlevel)
 {
-#ifdef _DEBUG
+#ifndef NDEBUG
     if (log && has_any(BUILD::VERBOSE))
         *log << "check include at level "<<rlevel<<" :"<<source.get_base()<<'\n';
 #endif
@@ -186,14 +182,14 @@ builder::compile(const char* out_ext, const char* out_arg, bool echo_name)
     bool logging = log && has_any(BUILD::VERBOSE);
     string output_line;
 
-    if (!sources)
+    if (!sources.size())
         throw c4s_exception("builder::compile - sources not defined!");
 
     string prepared(vars.expand(c_opts.str()));
     try {
         if (logging)
-            *log << "Considering " << sources->size() << " source files for build.\n";
-        for (src = sources->begin(); src != sources->end(); src++) {
+            *log << "Considering " << sources.size() << " source files for build.\n";
+        for (src = sources.begin(); src != sources.end(); src++) {
             current_obj.set(build_dir + C4S_DSEP, src->get_base_plain(), out_ext);
             if (src->outdated(current_obj) || (!has_any(BUILD::NOINCLUDES) && check_includes(*src))) {
                 if (log && echo_name)
@@ -245,11 +241,11 @@ builder::link(const char* out_ext, const char* out_arg)
     BUILD_STATUS bs;
     ostringstream options;
     string output_line;
-    if (!sources)
+    if (!sources.size())
         throw c4s_exception("builder::link - sources not defined!");
     if (!out_ext)
         throw c4s_exception("builder::link - link file extenstion missing. Unable to link.");
-    path_list linkFiles(*sources, build_dir + C4S_DSEP, out_ext);
+    path_list linkFiles(sources, build_dir + C4S_DSEP, out_ext);
     try {
         if (log && has_any(BUILD::VERBOSE))
             *log << "Linking " << target << '\n';
@@ -323,7 +319,7 @@ builder::print(ostream& os, bool list_sources)
     if (list_sources) {
         os << "  Source files:\n";
         list<path>::iterator src;
-        for (src = sources->begin(); src != sources->end(); src++) {
+        for (src = sources.begin(); src != sources.end(); src++) {
             os << "    " << src->get_base() << '\n';
         }
     }
@@ -415,7 +411,7 @@ builder::export_compiler_commands(path& exp, const path& ccd)
     ostringstream options;
     bool first_ccdb = true;
 
-    if (!sources) {
+    if (!sources.size()) {
         cout << "builder::export - sources not defined!\n";
         return;
     }
@@ -427,7 +423,7 @@ builder::export_compiler_commands(path& exp, const path& ccd)
     cc_db << "[\n";
 
     string prepared(vars.expand(c_opts.str()));
-    for (src = sources->begin(); src != sources->end(); src++) {
+    for (src = sources.begin(); src != sources.end(); src++) {
         path objfile(build_dir + C4S_DSEP, src->get_base_plain(), ".o");
         cout << src->get_base() << " >>\n";
         options.str("");
@@ -460,7 +456,7 @@ builder::export_cmake(path& dir)
     ostringstream options;
     bool first = true;
 
-    if (!sources) {
+    if (!sources.size()) {
         cout << "builder::export - sources not defined!\n";
         return;
     }
@@ -473,7 +469,7 @@ builder::export_cmake(path& dir)
     cml << "project(" << name << ")\n";
     cml << "cmake_minimum_required(VERSION 3.19)\n\n";
     cml << "add_executable(" << name << '\n';
-    for (src = sources->begin(); src != sources->end(); src++) {
+    for (src = sources.begin(); src != sources.end(); src++) {
         if (first)
             first = false;
         else

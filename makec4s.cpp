@@ -15,6 +15,10 @@ using namespace c4s;
 
 program_arguments args;
 
+#ifdef C4S_DEBUGTRACE
+std::ofstream c4slog;
+#endif
+
 int
 make_template()
 {
@@ -173,7 +177,7 @@ main(int argc, char** argv)
         // Gcc options for Linux
         // Build options
         string libname("-lc4s");
-        make = new builder_gcc(&sources, target.c_str(), &cout);
+        make = new builder_gcc(sources, target.c_str(), &cout);
         // Get C4S location
         string c4svar;
         make->add_comp("-x c++ -fno-rtti -fcompare-debug-second");

@@ -5,8 +5,8 @@
  * of the following commands:
  *
  * Linux / OSX:
- *   g++ -o build build.cxx -Wall -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O2 
- *   g++ -o build build.cxx -Wall -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O0 -ggdb
+ *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O2
+ *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O0 -ggdb
  *
  * Windows Visual Studio:
  *   cl /Febuilder.exe /O2 /MD /EHsc /W2 builder.cpp Advapi32.lib
@@ -27,6 +27,8 @@
 #include <iostream>
 #include <sstream>
 
+#include "ntbs/ntbs.hpp"
+#include "ntbs/ntbs.cpp"
 #include "builder.cpp"
 #include "builder.hpp"
 #include "builder_gcc.cpp"
@@ -49,6 +51,8 @@
 #include "variables.hpp"
 #include "version.hpp"
 
+#include "logger.cpp"
+
 using namespace std;
 using namespace c4s;
 
@@ -60,7 +64,10 @@ program_arguments args;
 const char* cpp_list = "builder.cpp logger.cpp path.cpp path_list.cpp "
                        "program_arguments.cpp util.cpp variables.cpp "
                        "settings.cpp process.cpp user.cpp builder_gcc.cpp "
-                       "RingBuffer.cpp";
+                       "RingBuffer.cpp ntbs/ntbs.cpp";
+
+int install(const string& install_dir);
+
 // -------------------------------------------------------------------------------------------------
 int
 documentation()
@@ -87,7 +94,7 @@ build(ostream* log)
 
     path_list cppFiles(cpp_list, ' ');
 
-    builder* make = new builder_gcc(&cppFiles, "c4s", log);
+    builder* make = new builder_gcc(cppFiles, "c4s", log);
     make->set(BUILD::LIB);
 
     if (!args.is_set("-deb") && !args.is_set("-rel")) {
@@ -111,8 +118,10 @@ build(ostream* log)
             if (args.is_set("-V"))
                 cout << "Setting debug-build.\n";
             make->add(BUILD::DEB);
-        } else
+        } else {
             make->add(BUILD::REL);
+            make->add_comp("-DNDEBUG");
+        }
     }
     if (args.is_set("-V"))
         make->add(BUILD::VERBOSE);
@@ -140,9 +149,11 @@ build(ostream* log)
     path_list plmkc4s;
     plmkc4s += path("makec4s.cpp");
 
-    builder* make2 = new builder_gcc(&plmkc4s, "makec4s", log);
+    builder* make2 = new builder_gcc(plmkc4s, "makec4s", log);
     make2->set(BUILD::BIN);
     make2->add(args.is_set("-deb") ? BUILD::DEB : BUILD::REL);
+    if (args.is_set("-t"))
+        make2->add_comp("-DC4S_DEBUGTRACE");
     if (args.is_set("-V"))
         make2->add(BUILD::VERBOSE);
     make2->add_comp("-fno-rtti");
@@ -152,8 +163,12 @@ build(ostream* log)
         cout << "\nBuild failed.\n";
         delete make2;
         return 2;
-    } else
+    } else {
         cout << "Compilation ready.\n";
+#ifdef AUTOINSTALL
+        install("/usr/local/");
+#endif
+    }
     delete make2;
     return 0;
 }
@@ -179,14 +194,14 @@ clean()
 }
 // -------------------------------------------------------------------------------------------------
 int
-install()
+install(const string& install_dir)
 {
     path lbin;
     path home(args.exe);
     path_iterator pi;
 
     cout << "Installing Cpp4Scripts\n";
-    path inst_root(append_slash(args.get_value("-install")));
+    path inst_root(install_dir);
     if (!inst_root.dirname_exists()) {
         cout << "Installation root directory " << inst_root.get_path() << " must exist.\n";
         return 1;
@@ -201,9 +216,8 @@ install()
 
     // Copy sources
     if (args.is_set("-V")) {
-        cout << "Copying headers and sources.\n";
+        cout << "Copying headers.\n";
     }
-    path_list sources(cpp_list, ' ');
     string target = "c4s";
     if (args.is_set("-l")) {
         target += '-';
@@ -215,7 +229,7 @@ install()
     path make_name("makec4s");
 
     int lib_count = 0;
-    if (dlib.exists()) {
+    if (dlib.exists() && args.is_set("-deb")) {
         path lib(inst_root);
         lib += "lib-d/";
         if (!lib.dirname_exists())
@@ -225,7 +239,7 @@ install()
             cout << "Copied " << dlib.get_path() << " to " << lib.get_path() << '\n';
         lib_count++;
     }
-    if (rlib.exists()) {
+    if (rlib.exists() && args.is_set("-rel")) {
         path lib(inst_root);
         lib += "lib/";
         if (!lib.dirname_exists())
@@ -242,14 +256,17 @@ install()
         cout << "  " << dlib.get_path() << '\n';
         cout << "  " << rlib.get_path() << '\n';
     }
-    sources.set_dir(home);
-    path_list headers(args.exe, ".*hpp$");
+    path inc_src(args.exe);
+    path_list headers(inc_src, ".*hpp$");
     if (headers.size() == 0) {
         cout << "No C4S headers found. Installation aborted.\n";
         return 2;
     }
-    sources.copy_to(inc, PCF_FORCE);
     headers.copy_to(inc, PCF_FORCE);
+    inc_src.append_dir("ntbs");
+    inc.append_dir("ntbs");
+    path_list ntbs_h(inc_src, ".*hpp$");
+    ntbs_h.copy_to(inc, PCF_FORCE);
 
     // Copy makec4s utility
     if (args.is_set("-V"))
@@ -315,7 +332,7 @@ main(int argc, char** argv)
         if (args.is_set("-clean"))
             return clean();
         if (args.is_set("-install"))
-            return install();
+            return install(append_slash(args.get_value("-install")));
     } catch (const exception& ce) {
         cout << "Function failed: " << ce.what() << '\n';
         return 1;

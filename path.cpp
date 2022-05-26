@@ -1209,12 +1209,22 @@ c4s::path::rm() const
 void
 c4s::path::symlink(const path& link) const
 {
-    if (!exists()) {
-        ostringstream os;
-        os << "path::symlink - Symbolic link target:" << get_path() << " does no exist";
-        throw path_exception(os.str().c_str());
+    string source;
+    if (base.empty()) {
+        if (!dirname_exists()) {
+            ostringstream os;
+            os << "path::symlink - Symbolic link target dir:" << get_path() << " does no exist";
+            throw path_exception(os.str().c_str());
+        }
+        source = get_dir_plain();
+    } else {
+        if (!exists()) {
+            ostringstream os;
+            os << "path::symlink - Symbolic link target:" << get_path() << " does no exist";
+            throw path_exception(os.str().c_str());
+        }
+        source = get_path();
     }
-    string source = base.empty() ? get_dir_plain() : get_path();
     string linkname = link.base.empty() ? link.get_dir_plain() : link.get_path();
     if (::symlink(source.c_str(), linkname.c_str())) {
         ostringstream os;

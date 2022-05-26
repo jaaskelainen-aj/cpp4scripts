@@ -565,9 +565,10 @@ process::set_user(user* _owner)
     owner = _owner;
 }
 // -------------------------------------------------------------------------------------------------
-/*! Attaching allows developer to stop running processes by first attaching object to a process
-  and then calling stop-function. Exception is thrown if pid is not found. If process alredy is
-  running this function does nothing. Daemon mode is set on. \param _pid Process id to attach to.
+/*! Attaching allows developer to stop running processes by first attaching object to a process and
+    then calling stop-function. If process alredy is running this function does nothing. Daemon
+    mode is set on.
+    \param _pid Process id to attach to.
  */
 bool
 process::attach(int _pid)
@@ -639,6 +640,13 @@ process::query(const char* cmd, const char* args, ntbs* input, ntbs* answer, int
         return -1;
     process source(cmd, args);
     return source.query(input, answer, _timeout);
+}
+// -------------------------------------------------------------------------------------------------
+void
+process::run_daemon()
+{
+    daemon = true;
+    start();
 }
 // -------------------------------------------------------------------------------------------------
 /*!

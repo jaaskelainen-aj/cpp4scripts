@@ -116,8 +116,6 @@ class process
 
     //! Sets the effective owner for the process. (Linux only)
     void set_user(user*);
-    //! Sets the daemon flag. Use only for attached processes.
-    void set_daemon(bool enable) { daemon = enable; }
     //! Set the timeout for this process overriding general timeout value.
     void set_timeout(unsigned int to) { timeout = to; }
     //! Enables or disables command echoing before execution.
@@ -163,6 +161,8 @@ class process
     int query(ntbs* question, ntbs* answer, int timeout=5);
     //! Static function that returns an output from given command.
     static int query(const char* cmd, const char* args, ntbs* input, ntbs* answer=0, int timeout=15);
+    //! Runs process as daemon, i.e. process will not be stopped by destructor.
+    void run_daemon();
     //! Checks if the process is still running.
     bool is_running();
     //! Waits for the process to exit.
@@ -203,7 +203,7 @@ class process
     pid_t pid;
     int last_ret_val;
     bool daemon;                //!< If true then the process is to be run as daemon and should not be terminated
-                                //!< at class dest
+                                //!< at class destructor.
     std::iostream* stream_in;   //!< Data for client stdin
     path stdin_path;            //!< If defined and exists, files content will be used as input to process.
     proc_pipes* pipes;          //!< Pipe to child for input and output. Valid when child is running.

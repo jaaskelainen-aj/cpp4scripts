@@ -791,6 +791,8 @@ process::operator()(const string& args)
 int
 process::operator()(std::ostream& os)
 {
+    if (rb_out.max_size() == 0)
+        rb_out.max_size(RB_SIZE_LG);
     for(start(); is_running(); ) {
         rb_out.read_into(os);
     }

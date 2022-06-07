@@ -49,7 +49,6 @@
 #include "util.hpp"
 #include "variables.cpp"
 #include "variables.hpp"
-#include "version.hpp"
 
 #include "logger.cpp"
 
@@ -86,11 +85,25 @@ documentation()
     return 0;
 }
 // -------------------------------------------------------------------------------------------------
+bool create_version_h()
+{
+    ntbs c4s_version;
+    if (!process::query("git", "describe --tags --dirty", 0, &c4s_version)) {
+        ofstream vh("version.hpp");
+        vh << "const char* CPP4SCRIPTS_VERSION=\"";
+        vh << c4s_version.get() << "\";\n";
+        vh.close();
+        return true;
+    }
+    return false;
+}
+// -------------------------------------------------------------------------------------------------
 int
 build(ostream* log)
 {
-    if (args.is_set("-deb") && builder::update_build_no("version.hpp"))
-        cout << "Warning: Unable to update build number.\n";
+    if (!create_version_h()) {
+        cout << "Warning: unable to craete version.hpp\n";
+    }
 
     path_list cppFiles(cpp_list, ' ');
 
@@ -311,8 +324,8 @@ main(int argc, char** argv)
     args += argument("-V", false, "Verbose mode.");
     args += argument("-?", false, "Shows this help");
 
-    cout << "CPP4Scripts Builder Program. " << CPP4SCRIPTS_VERSION << ' ' << get_build_type()
-         << '\n';
+
+    cout << "CPP4Scripts Builder Program\n";
 
     try {
         args.initialize(argc, argv);

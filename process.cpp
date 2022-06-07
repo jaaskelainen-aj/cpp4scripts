@@ -616,7 +616,7 @@ int
 process::query(ntbs* question, ntbs* answer, int _timeout)
 {
     timeout = _timeout;
-    if (answer)
+    if (answer && rb_out.max_size() == 0)
         rb_out.max_size(answer->size());
     start();
     if (question) {
@@ -638,7 +638,7 @@ process::query(const char* cmd, const char* args, ntbs* input, ntbs* answer, int
 {
     if (!cmd)
         return -1;
-    process source(cmd, args);
+    process source(cmd, args, PIPE::SM);
     return source.query(input, answer, _timeout);
 }
 // -------------------------------------------------------------------------------------------------

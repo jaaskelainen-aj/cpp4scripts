@@ -5,7 +5,7 @@
  * of the following commands:
  *
  * Linux / OSX:
- *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O2
+ *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O0
  *   g++ -o build build.cxx -Wall -DAUTOINSTALL -pthread -fexceptions -fno-rtti -fuse-cxa-atexit -std=c++17 -lstdc++ -O0 -ggdb
  *
  * Windows Visual Studio:
@@ -89,6 +89,7 @@ bool create_version_h()
 {
     ntbs c4s_version;
     if (!process::query("git", "describe --tags --dirty", 0, &c4s_version)) {
+        c4s_version.trim();
         ofstream vh("version.hpp");
         vh << "const char* CPP4SCRIPTS_VERSION=\"";
         vh << c4s_version.get() << "\";\n";
@@ -178,7 +179,7 @@ build(ostream* log)
         return 2;
     } else {
         cout << "Compilation ready.\n";
-#ifdef AUTOINSTALL
+#if defined AUTOINSTALL && !__APPLE__
         install("/usr/local/");
 #endif
     }
@@ -324,7 +325,6 @@ main(int argc, char** argv)
     args += argument("-V", false, "Verbose mode.");
     args += argument("-?", false, "Shows this help");
 
-
     cout << "CPP4Scripts Builder Program\n";
 
     try {
@@ -335,8 +335,15 @@ main(int argc, char** argv)
         args.usage();
         return 1;
     }
-    if (args.is_set("-v"))
+    if (args.is_set("-v")) {
+        ntbs c4s_version;
+        if (!process::query("git", "describe --tags --dirty", 0, &c4s_version)) {
+            c4s_version.trim();
+            cout << c4s_version.get() << '\n';
+        } else
+            cout << "No version available.\n";
         return 0;
+    }
     if (args.is_set("-?")) {
         args.usage();
         return 0;

@@ -23,6 +23,7 @@
 #include <direct.h>
 #include <windows.h>
 #endif
+#include "ntbs/ntbs.hpp"
 #include "config.hpp"
 #include "exception.hpp"
 #include "path.hpp"
@@ -639,24 +640,15 @@ has_allbits(uint32_t target, uint32_t bits)
     return val == target ? true : false;
 }
 // -------------------------------------------------------------------------------------------------
-void
-trim(std::string& target)
-{
-    target.erase(target.begin(), std::find_if(target.begin(), target.end(), [](unsigned char ch) {
-        return !std::isspace(ch);
-    }));
-    target.erase(std::find_if(target.rbegin(), target.rend(),
-            std::not1(std::ptr_fun<int, int>(std::isspace))).base(), target.end());
-}
-// -------------------------------------------------------------------------------------------------
 bool
 parse_key_values(const char* str, 
-    std::unordered_map<std::string, std::string>& kv,
+    std::unordered_map<ntbs, ntbs>& kv,
     char separator)
 {
     enum STATE { KEY, VAL } state;
     const char* ptr = str;
-    string key, val;
+    NTBS(key, 32);
+    NTBS(val, 96);
     state = KEY;
     while(*ptr) {
         switch(state) {
@@ -671,8 +663,8 @@ parse_key_values(const char* str,
             break;
         case VAL:
             if (*ptr == separator) {
-                trim(key);
-                trim(val);
+                key.trim();
+                val.trim();
                 kv[key] = val;
                 key.clear();
                 val.clear();
@@ -688,8 +680,8 @@ parse_key_values(const char* str,
     }
     if (state == KEY)
         return false;
-    trim(key);
-    trim(val);
+    key.trim();
+    val.trim();
     kv[key] = val;
     return true;
 }

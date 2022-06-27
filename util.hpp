@@ -99,7 +99,7 @@ void trim(std::string&);
 
 //! Parse given string into map
 bool parse_key_values(const char* str, 
-                        std::unordered_map<std::string, std::string>& kv,
+                        std::unordered_map<ntbs, ntbs>& kv,
                         char separator=',');
 
 typedef unsigned int flag32;

@@ -12,6 +12,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #endif
+#include "ntbs/ntbs.hpp"
 #include "config.hpp"
 #include "exception.hpp"
 #include "user.hpp"
